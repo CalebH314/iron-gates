@@ -1956,7 +1956,9 @@ const B={
     B.solid(x,.55,z,.7,.22,.5,MAT.tile,{rot});
     B.solid(x,.28,z,.28,.55,.28,MAT.metal,{rot,solid:false});
   },
-  ent(e){ G.ents.push(e); return e; },
+  /* Crates register themselves in G.crates and are stepped from there — keeping
+     them out of G.ents stops their physics running twice per frame */
+  ent(e){ if(!(e instanceof Crate)) G.ents.push(e); return e; },
   spawn(x,y,z){ G.spawn.set(x,y,z); G.checkpoint.set(x,y,z); },
   task(text,ch){ G.tasks.push({text,ch}); }
 };
