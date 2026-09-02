@@ -953,14 +953,21 @@ function losBlocked(from,to,ignore){
 function sweepAxis(box,axis,amount,boxes,skip){
   if(amount===0) return null;
   box.min[axis]+=amount; box.max[axis]+=amount;
+  /* If you began the step clear of a box you can never need pushing back
+     further than you just moved. Anything demanding more was already
+     overlapping — a door that shut on you, a platform that swept into you —
+     and resolving it here would fling you to that box's far face, which for a
+     wall or a guard tower means the top of the level. Leave those to
+     depenetrate() and only take corrections this move could have caused. */
+  const lim=Math.abs(amount)+.02;
   let hit=null, best=0;
   for(const b of boxes){
     if(!b.enabled||b===skip) continue;
     if(!overlaps(box,b)) continue;
-    let push;
-    if(amount>0) push=b.min[axis]-box.max[axis];   // negative
-    else         push=b.max[axis]-box.min[axis];   // positive
-    if(Math.abs(push)>Math.abs(best)||!hit){ best=push; hit=b; }
+    const push = amount>0 ? b.min[axis]-box.max[axis]    // negative
+                          : b.max[axis]-box.min[axis];   // positive
+    if(Math.abs(push)>lim) continue;
+    if(!hit||Math.abs(push)>Math.abs(best)){ best=push; hit=b; }
   }
   if(hit){ box.min[axis]+=best; box.max[axis]+=best; }
   return hit;
@@ -971,7 +978,7 @@ function sweepAxis(box,axis,amount,boxes,skip){
    ========================================================================== */
 const PH={
   h:1.78, hCrouch:1.05, r:.30,
-  gravity:27, jump:9.3, walk:4.4, run:7.2, crouchSpd:2.1,
+  gravity:27, jump:9.3, walk:4.4, run:7.2, crouchSpd:2.1, step:.62,
   accel:52, airAccel:16, friction:14, climb:3.4, maxFall:32
 };
 
@@ -991,7 +998,13 @@ class Player{
     this.footT=0; this.lastGroundY=0;
   }
   setPos(x,y,z){ this.pos.set(x,y,z); this.vel.set(0,0,0); this.sync(); }
-  sync(){ this.box.setCenter(this.pos.x,this.pos.y+this.height/2,this.pos.z); }
+  /* Build the box from the feet up. setCenter() keeps whatever half-extents the
+     box already had, so crouching used to move the centre down while leaving it
+     full height — sinking the bottom 0.37m below your feet and into the floor. */
+  sync(){
+    this.box.min.set(this.pos.x-PH.r, this.pos.y,             this.pos.z-PH.r);
+    this.box.max.set(this.pos.x+PH.r, this.pos.y+this.height, this.pos.z+PH.r);
+  }
 
   update(dt,input,camYaw,fp){
     if(this.dead) return;
@@ -1069,6 +1082,7 @@ class Player{
     /* ---- move & collide, one axis at a time */
     this.sync();
     const solids=world.all();
+    this.depenetrate(solids);
     const dx=this.vel.x*dt, dy=this.vel.y*dt, dz=this.vel.z*dt;
 
     // push crates before resolving, so walking into one shoves it
@@ -1081,9 +1095,12 @@ class Player{
     const steps=Math.min(10,Math.max(1,Math.ceil(far/.28)));
     let sx=dx/steps, sy=dy/steps, sz=dz/steps;
     this.grounded=false; this.groundEnt=null;
+    const canStep=wasGround||this.grounded;
     for(let i=0;i<steps;i++){
-      if(sx&&sweepAxis(this.box,'x',sx,solids)){ this.vel.x=0; sx=0; }
-      if(sz&&sweepAxis(this.box,'z',sz,solids)){ this.vel.z=0; sz=0; }
+      if(sx&&sweepAxis(this.box,'x',sx,solids)&&
+         !(canStep&&this.stepUp('x',sx,solids))){ this.vel.x=0; sx=0; }
+      if(sz&&sweepAxis(this.box,'z',sz,solids)&&
+         !(canStep&&this.stepUp('z',sz,solids))){ this.vel.z=0; sz=0; }
       if(sy){
         const hy=sweepAxis(this.box,'y',sy,solids);
         if(hy){
@@ -1140,6 +1157,43 @@ class Player{
     animateHuman(this.model,this.st,dt,performance.now()/1000);
 
     this.ladder=null; this.inWater=Math.max(0,this.inWater-dt*4);
+  }
+
+  /* Ease out of any overlap we are already inside, a little at a time. This is
+     what catches you when a door closes on you or a mover sweeps through you —
+     cases sweepAxis now deliberately refuses to resolve. */
+  depenetrate(solids){
+    for(let iter=0;iter<3;iter++){
+      let ax=null, amt=0;
+      for(const b of solids){
+        if(!b.enabled||!overlaps(this.box,b)) continue;
+        const near=(lo,hi)=>Math.abs(lo)<Math.abs(hi)?lo:hi;
+        const px=near(b.min.x-this.box.max.x, b.max.x-this.box.min.x);
+        const py=near(b.min.y-this.box.max.y, b.max.y-this.box.min.y);
+        const pz=near(b.min.z-this.box.max.z, b.max.z-this.box.min.z);
+        let best=px, a='x';
+        if(Math.abs(py)<Math.abs(best)){ best=py; a='y'; }
+        if(Math.abs(pz)<Math.abs(best)){ best=pz; a='z'; }
+        if(Math.abs(best)>Math.abs(amt)){ amt=best; ax=a; }
+      }
+      if(!ax) return;
+      const step=clamp(amt,-.35,.35);
+      this.box.min[ax]+=step; this.box.max[ax]+=step;
+    }
+  }
+
+  /* Walk up a low ledge rather than being stopped dead by it. Without this a
+     0.55m stair tread blocks you outright and the horizontal resolution slides
+     you along its face — which reads as the stairs shoving you sideways. */
+  stepUp(axis,amount,solids){
+    const b=this.box, up=PH.step;
+    const s0=[b.min.x,b.min.y,b.min.z,b.max.x,b.max.y,b.max.z];
+    b.min.y+=up; b.max.y+=up;
+    let blocked=false;
+    for(const c of solids) if(c.enabled&&overlaps(b,c)){ blocked=true; break; }
+    if(!blocked&&!sweepAxis(b,axis,amount,solids)&&sweepAxis(b,'y',-up,solids)) return true;
+    b.min.set(s0[0],s0[1],s0[2]); b.max.set(s0[3],s0[4],s0[5]);
+    return false;
   }
 
   tryPush(dx,dz,solids){
@@ -2344,8 +2398,8 @@ build(){
 
   // washer drums for cover / climbing
   for(let i=0;i<4;i++){
-    B.solid(-6+i*3.4,.85,7.2,2.2,1.7,1.8,MAT.metal);
-    B.solid(-6+i*3.4,1.5,7.2,1.3,1.3,.1,MAT.glass,{solid:false,cast:false});
+    B.solid(-6+i*3.4,.72,7.2,2.2,1.44,1.8,MAT.metal);   // top 1.44 < jump apex
+    B.solid(-6+i*3.4,1.26,7.2,1.3,1.1,.1,MAT.glass,{solid:false,cast:false});
   }
 
   // ---- the valve that powers the platforms -----------------------------
