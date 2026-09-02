@@ -46,18 +46,34 @@ jump or a guard is fair, and can be changed mid-level:
 On Relaxed a running jump clears about 6.5 m of flat ground, which is enough to
 cross the roof gaps without waiting for the moving platforms at all.
 
-## Levels
+## Wings
 
-1. **Cell Block D** — footlocker on the pressure pad, then two breakers
-2. **The Laundry** — blinking beams, a fetch quest, platforms over the chute
-3. **The Yard** — kill three floodlights before Wire will cut the fence
-4. **The Kitchen** — three weight pads, three crates, conveyors and steam
-5. **Ventilation** — crouch ducts and three fan valves, one of which is a circuit trick
-6. **The Infirmary** — a four-key interlock whose order is written on a crash cart
-7. **The Workshop** — weight-interlocked gantries, solved in three moves
-8. **The Sublevel** — a surging flood that is electrified until you cut the feeder
-9. **The Roof** — precision platforming under sweeping searchlights
-10. **The Wall** — power, card and counterweight, with three guards walking between them
+100 levels in ten themed wings of ten. Wing 1 is hand-built — the original
+escape, from your cell to the wall. Wings 2–10 are generated from a fixed seed,
+so a given level is always the same level.
+
+| | wing | theme |
+|---|---|---|
+| 1 | The Old Wing | the original break: cells, laundry, yard, kitchen, vents, infirmary, workshop, sublevel, roof, wall |
+| 2 | The Foundry | heat, slag and moving steel |
+| 3 | The Archive | paper, dust and motion sensors |
+| 4 | Hydroponics | wet floors and grow lamps |
+| 5 | The Kennels | they walk the dogs at four |
+| 6 | Cold Storage | everything in here keeps |
+| 7 | The Quarry | open sky, no cover |
+| 8 | Signal Tower | straight up, all the way |
+| 9 | The Deep | below the water table |
+| 10 | Freedom Road | the last mile |
+
+A generated level is a chain of 3–7 chambers laid end to end. Each chamber holds
+one self-contained challenge — weight pads, breakers, a gap with platforms,
+ferries, blinking beams, a keycard, a patrolling officer, a four-button
+interlock, a crouch duct, or a prisoner who will help — and the channel it
+produces opens the door to the next. Because each chamber is solvable alone and
+the chain is linear, the level always completes. That invariant is checked: all
+100 levels build with exactly one exit, no stuck spawns, and every door channel
+produced by something actually present in the level.
+
 
 ## Technical notes
 

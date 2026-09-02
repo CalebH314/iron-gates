@@ -72,6 +72,16 @@
     .preview{width:200px;height:230px}}
 
   /* ---------- level select ---------- */
+  .modhead{display:flex;align-items:baseline;gap:12px;margin:22px 0 8px;
+    padding-bottom:7px;border-bottom:1px solid var(--line)}
+  .modhead:first-child{margin-top:0}
+  .modhead .mn{font-size:10px;letter-spacing:.28em;color:var(--amber);font-weight:700}
+  .modhead .mt{font-size:15px;font-weight:700;color:#dbe4ee;letter-spacing:.04em}
+  .modhead .ms{font-size:11px;color:#6b7a8d;margin-left:auto}
+  .modhead.lockedmod .mt{color:#4d5967}
+  .modhead.lockedmod .mn{color:#4d5967}
+  #lvGrid{max-height:none}
+  .lvgrid{margin-top:0}
   .lvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:6px}
   .lvcard{border:1px solid var(--line);background:#141a22;border-radius:4px;padding:14px;
     cursor:pointer;transition:.13s;text-align:left}
@@ -245,7 +255,7 @@
 </div></div>
 
 <div class="scr" id="sLevels"><div class="card">
-  <h2>Select Level</h2><div class="lvgrid" id="lvGrid"></div>
+  <h2>Select Level</h2><div id="lvGrid"></div>
   <div style="margin-top:22px;text-align:right"><button class="btn sm primary" id="bLvBack">Back</button></div>
 </div></div>
 
@@ -569,18 +579,19 @@ function loft(rings,seg=16,cap=true){
    again (very slightly larger) for the hair, so the hair sits on the skull. */
 function shapeHead(g,female,k=1){
   const p=g.attributes.position, v=new THREE.Vector3();
-  const RX=(female?.085:.090)*k, RY=(female?.117:.122)*k, RZ=(female?.096:.101)*k;
+  // cute styling: a big round skull, roughly a quarter of body height
+  const RX=(female?.140:.145)*k, RY=(female?.150:.155)*k, RZ=(female?.140:.145)*k;
   for(let i=0;i<p.count;i++){
     v.fromBufferAttribute(p,i);
     const ux=v.x,uy=v.y,uz=v.z;
     const low=sstep(.12,-.92,uy);                  // 0 at the brow, 1 under the chin
-    const taper=1-(female?.42:.41)*low*low;
+    const taper=1-(female?.16:.18)*low*low;          // soft chin, not a jaw
     let X=ux*RX*taper, Y=uy*RY, Z=uz*RZ*taper;
-    if(uz>0) Z+=.018*low*sstep(0,.55,uz)*k;        // chin and jawline come forward
-    Z+=.006*sstep(.12,.50,uy)*sstep(.30,.92,uz)*(1-sstep(.55,.95,uy))*k;   // brow
-    Z-=.010*sstep(-.25,-.95,uz)*k;                 // fuller back of the skull
-    X*=1-.07*sstep(.25,.95,Math.abs(ux));          // flatter temples
-    Y-=.012*low*low*k;                             // a little more jaw length
+    if(uz>0) Z+=.006*low*sstep(0,.55,uz)*k;        // barely any chin
+    Z+=.002*sstep(.12,.50,uy)*sstep(.30,.92,uz)*(1-sstep(.55,.95,uy))*k;   // hint of brow
+    Z-=.006*sstep(-.25,-.95,uz)*k;                 // round at the back
+    X*=1-.02*sstep(.25,.95,Math.abs(ux));          // keep the cheeks round
+    Y-=.004*low*low*k;
     p.setXYZ(i,X,Y,Z);
   }
   p.needsUpdate=true; g.computeVertexNormals(); return g;
@@ -596,18 +607,18 @@ function hairGeo(female,o={}){
   const K=o.k??1.05, IN=.88;
   const hl=o.hairline??.52;              // uy where the front hair stops
   const fall=o.fall??0;                  // how far the sides/back hang down
-  const RX=(female?.085:.090), RY=(female?.117:.122), RZ=(female?.096:.101);
+  const RX=(female?.140:.145), RY=(female?.150:.155), RZ=(female?.140:.145);
   for(let i=0;i<p.count;i++){
     v.fromBufferAttribute(p,i);
     const ux=v.x,uy=v.y,uz=v.z;
     const open=sstep(.22,.60,uz)*(1-sstep(hl-.16,hl+.14,uy));
     const k=lerp(K,IN,open);
     const low=sstep(.12,-.92,uy);
-    const taper=1-(female?.36:.41)*low*low;
+    const taper=1-(female?.16:.18)*low*low;
     let X=ux*RX*k*taper, Y=uy*RY*k, Z=uz*RZ*k*taper;
-    if(uz>0) Z+=.018*low*sstep(0,.55,uz)*k;
-    Z-=.010*sstep(-.25,-.95,uz)*k;
-    X*=1-.07*sstep(.25,.95,Math.abs(ux));
+    if(uz>0) Z+=.006*low*sstep(0,.55,uz)*k;
+    Z-=.006*sstep(-.25,-.95,uz)*k;
+    X*=1-.02*sstep(.25,.95,Math.abs(ux));
     if(fall){
       // draw the back and sides downward into a mass that clears the shoulders
       const back=1-sstep(-.15,.55,uz), side=sstep(.34,.98,Math.abs(ux));
@@ -648,9 +659,11 @@ function makeHuman(o={}){
   };
 
   // proportions — roughly 7.5 heads tall, hip joint at 0.93m ----------------
+  // hipY set so the soles land on y=0:
+  //   hipY - .015 (hip joint) - .30 (thigh) - .29 (shin) - .056 (foot) = 0
   const P = female
-    ? {hipY:.93, sh:.158, hipX:.092, neckY:.485, headY:.228}
-    : {hipY:.93, sh:.185, hipX:.088, neckY:.495, headY:.235};
+    ? {hipY:.661, sh:.135, hipX:.078, neckY:.375, headY:.225}
+    : {hipY:.661, sh:.150, hipX:.076, neckY:.385, headY:.230};
 
   rig.hips=grp(root,0,P.hipY,0);
   rig.torso=grp(rig.hips,0,0,0);
@@ -658,30 +671,27 @@ function makeHuman(o={}){
   // torso — chest wide, waist drawn in, hips flaring back out ---------------
   // the top rings close the torso into the neck, so the cap disc stays tiny
   const torsoRings = female
-    ? [{y:.558,rx:.060,rz:.052},{y:.536,rx:.082,rz:.065},{y:.513,rx:.108,rz:.080},
-       {y:.492,rx:.136,rz:.093},
-       {y:.46,rx:.168,rz:.104},{y:.385,rx:.158,rz:.116},
-       {y:.30,rx:.138,rz:.104},{y:.215,rx:.119,rz:.090},{y:.13,rx:.134,rz:.096},
-       {y:.04,rx:.163,rz:.110},{y:-.05,rx:.158,rz:.107},{y:-.11,rx:.145,rz:.100}]
-    : [{y:.575,rx:.062,rz:.054},{y:.552,rx:.085,rz:.067},{y:.528,rx:.112,rz:.083},
-       {y:.505,rx:.142,rz:.096},
-       {y:.48,rx:.196,rz:.112},{y:.40,rx:.183,rz:.120},
-       {y:.31,rx:.163,rz:.113},{y:.22,rx:.144,rz:.101},{y:.13,rx:.140,rz:.098},
-       {y:.04,rx:.155,rz:.107},{y:-.05,rx:.152,rz:.105},{y:-.11,rx:.140,rz:.098}];
+    ? [{y:.445,rx:.052,rz:.046},{y:.425,rx:.080,rz:.064},{y:.400,rx:.112,rz:.086},
+       {y:.360,rx:.140,rz:.100},{y:.290,rx:.142,rz:.104},
+       {y:.205,rx:.132,rz:.098},{y:.115,rx:.140,rz:.100},
+       {y:.030,rx:.152,rz:.107},{y:-.055,rx:.146,rz:.103},{y:-.10,rx:.132,rz:.095}]
+    : [{y:.455,rx:.054,rz:.048},{y:.435,rx:.084,rz:.066},{y:.408,rx:.118,rz:.090},
+       {y:.368,rx:.152,rz:.104},{y:.295,rx:.150,rz:.108},
+       {y:.205,rx:.138,rz:.100},{y:.115,rx:.140,rz:.100},
+       {y:.030,rx:.150,rz:.106},{y:-.055,rx:.145,rz:.102},{y:-.10,rx:.132,rz:.095}];
   mk(loft(torsoRings,22),skinM,rig.torso,0,0,0);
 
   if(female){
     // vest top — the yoke runs up over the shoulders instead of separate straps
-    const topRings=[{y:.550,rx:.100,rz:.076},{y:.505,rx:.146,rz:.098},
-                    {y:.455,rx:.171,rz:.110},{y:.385,rx:.167,rz:.125},
-                    {y:.30,rx:.147,rz:.112},{y:.215,rx:.128,rz:.098},
-                    {y:.175,rx:.130,rz:.099}];
+    const topRings=[{y:.432,rx:.090,rz:.070},{y:.404,rx:.122,rz:.093},
+                    {y:.364,rx:.148,rz:.107},{y:.292,rx:.150,rz:.111},
+                    {y:.205,rx:.140,rz:.105},{y:.160,rx:.142,rz:.106}];
     mk(loft(topRings,22,false),topM,rig.torso,0,0,0);
   }
 
   // neck + head ------------------------------------------------------------
   rig.neck=grp(rig.torso,0,P.neckY,0);
-  mk(loft([{y:.115,rx:.052,rz:.049},{y:.05,rx:.055,rz:.052},{y:-.03,rx:.064,rz:.058}],16),
+  mk(loft([{y:.105,rx:.058,rz:.055},{y:.04,rx:.062,rz:.058},{y:-.03,rx:.070,rz:.064}],16),
      skinM,rig.neck,0,0,0);
   rig.head=grp(rig.neck,0,P.headY,0);
   mk(shapeHead(new THREE.SphereGeometry(1,30,22),female),skinM,rig.head,0,0,0);
@@ -691,81 +701,71 @@ function makeHuman(o={}){
   const eyeW=new THREE.MeshStandardMaterial({color:0xf4f2ee,roughness:.18});
   const iris=new THREE.MeshStandardMaterial({color:0x3d2a1a,roughness:.15});
   const lipM=new THREE.MeshStandardMaterial({color:female?0xc06a62:0x9c5a52,roughness:female?.42:.55});
-  const F=female?.955:1, EY=.010, EX=.032*F, EZ=.084*F;
-  const ER=female?.0134:.0127;
+  /* Big, simple and friendly: a dark almond eye with a bright catchlight reads
+     as "cute" far better than a modelled eyeball, socket and lash line do. */
+  const F=female?.97:1, EY=-.004, EX=.050*F, EZ=.126*F;
+  const ER=(female?.036:.034)*F;
   for(const sx of[-1,1]){
-    const eye=mk(new THREE.SphereGeometry(ER,16,12),eyeW,rig.head,sx*EX,EY,EZ);
-    eye.scale.set(1,.90,.74);
-    mk(new THREE.SphereGeometry(female?.0070:.0064,10,8),iris,rig.head,sx*EX,EY,EZ+.0074);
-    // upper lid, so the eyes read as set into a socket rather than stuck on
-    const lid=mk(new THREE.SphereGeometry(ER*1.12,16,10,0,Math.PI*2,0,Math.PI*.47),
-      skinM,rig.head,sx*EX,EY+.0005,EZ);
-    lid.rotation.x=-.30; lid.scale.set(1,.92,.80);
-    if(female){
-      // lash line along the top of the lid
-      const lash=mk(new THREE.SphereGeometry(ER*1.17,16,10,0,Math.PI*2,0,Math.PI*.15),
-        darkM,rig.head,sx*EX,EY+.0008,EZ);
-      lash.rotation.x=-.30; lash.scale.set(1.06,.92,.82);
-    }
-    const brow=mk(new THREE.SphereGeometry(female?.0170:.021,10,8),hairM,
-      rig.head,sx*EX,EY+(female?.028:.030),.096*F);
-    brow.scale.set(female?1.10:1.2,female?.115:.20,.30); brow.rotation.z=sx*(female?.26:.15);
+    const eye=mk(new THREE.SphereGeometry(ER,20,16),darkM,rig.head,sx*EX,EY,EZ);
+    eye.scale.set(.86,1,.42);
+    const shine=mk(new THREE.SphereGeometry(ER*.30,10,8),eyeW,
+      rig.head,sx*EX-sx*ER*.26,EY+ER*.34,EZ+ER*.24);
+    shine.scale.set(1,1,.5);
+    const glint=mk(new THREE.SphereGeometry(ER*.15,8,6),eyeW,
+      rig.head,sx*EX+sx*ER*.30,EY-ER*.30,EZ+ER*.22);
+    glint.scale.set(1,1,.5);
+    const brow=mk(new THREE.SphereGeometry(ER*.60,10,8),hairM,
+      rig.head,sx*EX,EY+ER*1.60,EZ-.006);
+    brow.scale.set(1.15,.20,.28); brow.rotation.z=sx*(female?.16:.10);
   }
-  // nose: bridge tapering into a rounded tip, not a cone stuck on the face
-  const N=female?.88:1;
-  mk(loft([{y:.032,rx:.011*N,rz:.011},{y:.004,rx:.013*N,rz:.015},
-           {y:-.018,rx:.017*N,rz:.020}],12,false),skinM,rig.head,0,0,.093*F);
-  const tip=mk(new THREE.SphereGeometry(.0165*N,12,10),skinM,rig.head,0,-.025,.099*F);
-  tip.scale.set(1,.80,.95);
+  // a button nose and a small smile, nothing more
+  const nose=mk(new THREE.SphereGeometry(.0155*F,12,10),skinM,rig.head,0,-.046,.137*F);
+  nose.scale.set(1,.82,.72);
+  const smile=mk(new THREE.TorusGeometry(.030*F,.0062,8,16,Math.PI*.85),
+    lipM,rig.head,0,-.060,.129*F);
+  smile.rotation.z=Math.PI*1.075;
   for(const sx of[-1,1]){
-    const nos=mk(new THREE.SphereGeometry(.0082*N,8,6),skinM,rig.head,sx*.0152*N,-.027,.094*F);
-    nos.scale.set(.9,.8,1);
-  }
-  const upper=mk(new THREE.SphereGeometry(.018,14,8),lipM,rig.head,0,-.047,.0958*F);
-  upper.scale.set(female?1.42:1.55,female?.38:.32,.48);
-  const lower=mk(new THREE.SphereGeometry(.018,14,8),lipM,rig.head,0,-.062,.0948*F);
-  lower.scale.set(female?1.28:1.35,female?.44:.36,.48);
-  // ears sit on the side of the skull, which the temple flattening pulls in
-  for(const sx of[-1,1]){
-    const ear=mk(new THREE.SphereGeometry(.025,10,10),skinM,rig.head,sx*.082*F,.002,-.006);
-    ear.scale.set(.30,1.0,.58); ear.rotation.y=sx*.30;
+    const cheek=mk(new THREE.SphereGeometry(.026*F,12,10),
+      new THREE.MeshStandardMaterial({color:female?0xe0806f:0xd4796a,
+        roughness:.85,transparent:true,opacity:.32}),
+      rig.head,sx*.090*F,-.032,.112*F);
+    cheek.scale.set(1.1,.72,.34);
+    const ear=mk(new THREE.SphereGeometry(.032*F,12,12),skinM,rig.head,sx*.133*F,-.004,-.004);
+    ear.scale.set(.36,.92,.72); ear.rotation.y=sx*.24;
   }
 
   // hair -------------------------------------------------------------------
   if(female){
     // long hair: a shell that hangs past the jaw, framing the face
-    mk(hairGeo(true,{hairline:.50,fall:.20,k:1.055}),hairM,rig.head,0,.004,-.002);
+    mk(hairGeo(true,{hairline:.44,fall:.26,k:1.05}),hairM,rig.head,0,.004,-.002);
     // the mass that falls down the back, on its own joint so it swings
-    rig.pony=grp(rig.head,0,-.02,-.055);
-    mk(loft([{y:.04,rx:.086,rz:.062},{y:-.06,rx:.098,rz:.070},
-             {y:-.17,rx:.096,rz:.066},{y:-.27,rx:.080,rz:.054},
-             {y:-.35,rx:.052,rz:.036},{y:-.40,rx:.024,rz:.018}],20,false),
-       hairM,rig.pony,0,0,-.008);
+    rig.pony=grp(rig.head,0,-.03,-.085);
+    mk(loft([{y:.05,rx:.110,rz:.080},{y:-.07,rx:.124,rz:.088},
+             {y:-.20,rx:.118,rz:.082},{y:-.31,rx:.096,rz:.066},
+             {y:-.39,rx:.060,rz:.042},{y:-.44,rx:.026,rz:.020}],20,false),
+       hairM,rig.pony,0,0,-.010);
   }else{
-    mk(hairGeo(false,{hairline:.54,fall:0,k:1.04}),hairM,rig.head,0,.005,-.002);
+    mk(hairGeo(false,{hairline:.48,fall:.05,k:1.045}),hairM,rig.head,0,.005,-.002);
   }
 
   // arms -------------------------------------------------------------------
   rig.arm={};
   for(const side of['L','R']){
     const sx=side==='L'?-1:1;
-    const sh=grp(rig.torso,sx*P.sh,.455,0);
+    const sh=grp(rig.torso,sx*P.sh,.365,0);
     const A=female?.92:1;
     // a sphere at each joint so the segments never show a seam when they bend
-    const ball=mk(new THREE.SphereGeometry(.062*A,14,12),skinM,sh,0,.006,0);
-    ball.scale.set(1,1.05,1);
-    // deltoid swelling into a tapering upper arm
-    mk(loft([{y:.055,rx:.060*A,rz:.058*A},{y:-.02,rx:.063*A,rz:.060*A},
-             {y:-.14,rx:.051*A,rz:.049*A},{y:-.24,rx:.044*A,rz:.042*A},
-             {y:-.30,rx:.041*A,rz:.039*A}],20),skinM,sh,0,0,0);
-    const elbow=grp(sh,0,-.30,0);
-    mk(new THREE.SphereGeometry(.043*A,12,10),skinM,elbow,0,0,0);
-    mk(loft([{y:.02,rx:.043*A,rz:.042*A},{y:-.05,rx:.046*A,rz:.043*A},
-             {y:-.16,rx:.036*A,rz:.033*A},{y:-.265,rx:.030*A,rz:.026*A}],20),
-       skinM,elbow,0,0,0);
-    mk(loft([{y:-.255,rx:.032*A,rz:.020*A},{y:-.31,rx:.040*A,rz:.022*A},
-             {y:-.40,rx:.035*A,rz:.019*A},{y:-.44,rx:.020*A,rz:.012*A}],16),
-       skinM,elbow,0,0,0);
+    const ball=mk(new THREE.SphereGeometry(.058*A,14,12),skinM,sh,0,.004,0);
+    // short rounded upper arm
+    mk(loft([{y:.045,rx:.056*A,rz:.055*A},{y:-.02,rx:.058*A,rz:.056*A},
+             {y:-.12,rx:.052*A,rz:.050*A},{y:-.21,rx:.048*A,rz:.046*A}],18),skinM,sh,0,0,0);
+    const elbow=grp(sh,0,-.21,0);
+    mk(new THREE.SphereGeometry(.046*A,12,10),skinM,elbow,0,0,0);
+    mk(loft([{y:.02,rx:.046*A,rz:.045*A},{y:-.06,rx:.047*A,rz:.045*A},
+             {y:-.17,rx:.042*A,rz:.040*A}],18),skinM,elbow,0,0,0);
+    // a simple round mitt reads friendlier than fingers at this size
+    const hand=mk(new THREE.SphereGeometry(.052*A,14,12),skinM,elbow,0,-.215,0);
+    hand.scale.set(1,1.05,.85);
     rig.arm[side]={sh,elbow};
   }
 
@@ -773,32 +773,28 @@ function makeHuman(o={}){
   rig.leg={};
   // prison-issue shorts: one waistband that clearly sits outside the hips,
   // with legs that start high enough to merge into it
-  mk(loft([{y:.095,rx:.152,rz:.106},{y:.03,rx:.182,rz:.122},
-           {y:-.03,rx:.199,rz:.130},{y:-.08,rx:.205,rz:.130},
-           {y:-.125,rx:.196,rz:.124}],24,'top'),
+  mk(loft([{y:.085,rx:.146,rz:.104},{y:.02,rx:.170,rz:.118},
+           {y:-.03,rx:.184,rz:.124},{y:-.075,rx:.188,rz:.124},
+           {y:-.115,rx:.178,rz:.118}],24,'top'),
      clothM,rig.hips,0,0,0);
   for(const side of['L','R']){
     const sx=side==='L'?-1:1;
-    const hip=grp(rig.hips,sx*P.hipX,-.02,0);
+    const hip=grp(rig.hips,sx*P.hipX,-.015,0);
     const T=female?1.02:1;
-    mk(loft([{y:.02,rx:.098*T,rz:.095*T},{y:-.10,rx:.093*T,rz:.090*T},
-             {y:-.26,rx:.078*T,rz:.076*T},{y:-.38,rx:.067*T,rz:.065*T},
-             {y:-.44,rx:.062*T,rz:.060*T}],20),skinM,hip,0,0,0);
-    mk(loft([{y:.10,rx:.113*T,rz:.109*T},{y:-.01,rx:.109*T,rz:.105*T},
-             {y:-.11,rx:.102*T,rz:.098*T},{y:-.19,rx:.095*T,rz:.091*T},
-             {y:-.212,rx:.082*T,rz:.079*T}],20,false),
+    mk(loft([{y:.02,rx:.090*T,rz:.088*T},{y:-.09,rx:.086*T,rz:.084*T},
+             {y:-.21,rx:.076*T,rz:.074*T},{y:-.30,rx:.070*T,rz:.068*T}],18),
+       skinM,hip,0,0,0);
+    mk(loft([{y:.085,rx:.104*T,rz:.101*T},{y:-.01,rx:.100*T,rz:.097*T},
+             {y:-.11,rx:.094*T,rz:.091*T},{y:-.145,rx:.080*T,rz:.078*T}],18,false),
        clothM,hip,0,0,0);
-    const knee=grp(hip,0,-.44,0);
-    mk(new THREE.SphereGeometry(.057*T,14,12),skinM,knee,0,.005,0);
-    // calf bulge high, tapering to a narrow ankle
-    mk(loft([{y:.02,rx:.062*T,rz:.061*T},{y:-.07,rx:.068*T,rz:.069*T},
-             {y:-.18,rx:.057*T,rz:.055*T},{y:-.32,rx:.041*T,rz:.038*T},
-             {y:-.42,rx:.036*T,rz:.033*T}],20),skinM,knee,0,0,0);
-    const ankle=grp(knee,0,-.42,0);
-    const foot=mk(new THREE.SphereGeometry(1,14,12),skinM,ankle,0,-.022,.030);
-    foot.scale.set(.042,.028,.098);
-    const toes=mk(new THREE.SphereGeometry(1,12,10),skinM,ankle,0,-.024,.108);
-    toes.scale.set(.040,.021,.032);
+    const knee=grp(hip,0,-.30,0);
+    mk(new THREE.SphereGeometry(.062*T,14,12),skinM,knee,0,.004,0);
+    mk(loft([{y:.02,rx:.066*T,rz:.065*T},{y:-.08,rx:.068*T,rz:.068*T},
+             {y:-.20,rx:.058*T,rz:.056*T},{y:-.29,rx:.052*T,rz:.050*T}],18),
+       skinM,knee,0,0,0);
+    const ankle=grp(knee,0,-.29,0);
+    const foot=mk(new THREE.SphereGeometry(1,14,12),skinM,ankle,0,-.020,.022);
+    foot.scale.set(.055,.036,.086);
     rig.leg[side]={hip,knee,ankle};
   }
 
@@ -1958,33 +1954,33 @@ class Guard extends Ent{
       m.castShadow=m.receiveShadow=true; parent.add(m); return m;
     };
     // uniform shirt over the torso
-    add(loft([{y:.578,rx:.068,rz:.058},{y:.552,rx:.092,rz:.072},
-              {y:.528,rx:.120,rz:.088},{y:.505,rx:.158,rz:.104},{y:.45,rx:.203,rz:.119},
-              {y:.39,rx:.191,rz:.127},{y:.30,rx:.171,rz:.120},
-              {y:.21,rx:.152,rz:.108},{y:.10,rx:.150,rz:.106},
-              {y:.02,rx:.158,rz:.110}],22,false),navy,h.rig.torso);
-    const belt=add(new THREE.TorusGeometry(.156,.026,8,18),MAT.dark,h.rig.torso,0,.04,0);
+    add(loft([{y:.458,rx:.062,rz:.055},{y:.438,rx:.092,rz:.073},
+              {y:.410,rx:.126,rz:.097},{y:.370,rx:.160,rz:.111},
+              {y:.298,rx:.158,rz:.115},{y:.208,rx:.146,rz:.107},
+              {y:.115,rx:.148,rz:.107},{y:.030,rx:.158,rz:.113}],22,false),
+        navy,h.rig.torso);
+    const belt=add(new THREE.TorusGeometry(.150,.024,8,18),MAT.dark,h.rig.torso,0,.05,0);
     belt.rotation.x=Math.PI/2; belt.scale.set(1,.70,1);
     // peaked cap, shaped off the same skull curve so it actually sits down
     add(shapeHead(new THREE.SphereGeometry(1,22,14,0,Math.PI*2,0,Math.PI*.48),
         !!o.female,1.09),navy,h.rig.head,0,.010,-.004);
     const brim=add(new THREE.SphereGeometry(1,14,8,0,Math.PI,0,Math.PI*.5),
-      navy,h.rig.head,0,.038,.026);
-    brim.scale.set(.096,.016,.115); brim.rotation.y=Math.PI;
+      navy,h.rig.head,0,.050,.040);
+    brim.scale.set(.150,.020,.170); brim.rotation.y=Math.PI;
     for(const s of['L','R']){
-      add(loft([{y:.05,rx:.066,rz:.063},{y:-.02,rx:.070,rz:.066},
-                {y:-.15,rx:.059,rz:.056}],16,false),navy,h.rig.arm[s].sh);
+      add(loft([{y:.05,rx:.062,rz:.060},{y:-.02,rx:.064,rz:.062},
+                {y:-.12,rx:.058,rz:.056}],16,false),navy,h.rig.arm[s].sh);
     }
     G.scene.add(this.obj);
     // torchlight + visible cone
     this.torch=new THREE.SpotLight(0xffe7b8,26,this.range+4,this.fov*.95,.5,1.4);
-    this.torch.position.set(0,1.55,0); this.obj.add(this.torch);
-    this.tt=new THREE.Object3D(); this.tt.position.set(0,1.1,-6); this.obj.add(this.tt);
+    this.torch.position.set(0,1.26,0); this.obj.add(this.torch);
+    this.tt=new THREE.Object3D(); this.tt.position.set(0,0.95,-6); this.obj.add(this.tt);
     this.torch.target=this.tt;
     const coneG=new THREE.ConeGeometry(this.range*Math.tan(this.fov)*.92,this.range,20,1,true);
     this.cone=new THREE.Mesh(coneG,new THREE.MeshBasicMaterial({color:0xffd98a,
       transparent:true,opacity:.055,side:THREE.DoubleSide,depthWrite:false}));
-    this.cone.rotation.x=-Math.PI/2; this.cone.position.set(0,1.5,-this.range/2);
+    this.cone.rotation.x=-Math.PI/2; this.cone.position.set(0,1.22,-this.range/2);
     this.obj.add(this.cone);
     this.yaw=0; this.st={speed:0,cycle:0,air:false,crouch:false,vy:0,climb:false,headY:0};
     this.cycle=0;
@@ -2021,7 +2017,7 @@ class Guard extends Ent{
     if(!active) return;
     // vision
     const p=G.player;
-    const eye=V3(this.obj.position.x,this.obj.position.y+1.55,this.obj.position.z);
+    const eye=V3(this.obj.position.x,this.obj.position.y+1.26,this.obj.position.z);
     const pc=V3(p.pos.x,p.pos.y+p.height*.55,p.pos.z);
     const to=pc.clone().sub(eye); const dd=to.length();
     let seen=false;
@@ -2065,10 +2061,10 @@ class NPC extends Ent{
     this.model=h; this.obj=h.root;
     this.obj.position.set(x,y,z); this.obj.rotation.y=this.rot;
     G.scene.add(this.obj);
-    this.tag=nameTag(this.name); this.tag.position.set(0,2.12,0); this.obj.add(this.tag);
+    this.tag=nameTag(this.name); this.tag.position.set(0,1.72,0); this.obj.add(this.tag);
     this.mark=new THREE.Mesh(new THREE.OctahedronGeometry(.10,0),emiss(0xffb144,2.6));
-    this.mark.position.set(0,1.98,0); this.obj.add(this.mark);
-    this.pl=new THREE.PointLight(0xffb144,.5,3); this.pl.position.set(0,1.9,0); this.obj.add(this.pl);
+    this.mark.position.set(0,1.56,0); this.obj.add(this.mark);
+    this.pl=new THREE.PointLight(0xffb144,.5,3); this.pl.position.set(0,1.5,0); this.obj.add(this.pl);
     this.st={speed:0,cycle:0,air:false,crouch:false,vy:0,climb:false,headY:0};
     this.pos=V3(x,y,z); G.interact.push(this);
     this.idle=Math.random()*10;
@@ -2109,7 +2105,7 @@ class NPC extends Ent{
     animateHuman(this.model,this.st,dt,G.t);
     this.mark.visible=!this.doneOnce;
     this.pl.intensity=this.doneOnce?0:.4+Math.sin(G.t*3)*.2;
-    this.mark.rotation.y+=dt*2; this.mark.position.y=1.98+Math.sin(G.t*2.4)*.07;
+    this.mark.rotation.y+=dt*2; this.mark.position.y=1.56+Math.sin(G.t*2.4)*.07;
     this.tag.material.opacity=clamp(1.6-dist/14,0,1);
   }
 }
@@ -2272,10 +2268,328 @@ const B={
   task(text,ch){ G.tasks.push({text,ch}); }
 };
 
+
+/* ============================================================================
+   PROCEDURAL WINGS
+   Nine themed modules of ten levels each, generated from a seed so a given
+   level is always identical. A level is a chain of chambers laid end to end;
+   each chamber holds one self-contained challenge whose channel opens the door
+   to the next. Because every chamber is solvable on its own and the chain is
+   linear, the level as a whole is always completable.
+   ========================================================================== */
+function rngFrom(seed){
+  let s=seed>>>0;
+  return ()=>{ s=(s+0x6D2B79F5)>>>0;
+    let t=Math.imul(s^(s>>>15), s|1);
+    t^=t+Math.imul(t^(t>>>7), t|61);
+    return ((t^(t>>>14))>>>0)/4294967296; };
+}
+const CW=18, CD=15, CHH=6.5, CGAP=2, CSPAN=CW+CGAP;
+const chamberAt=i=>({x0:i*CSPAN, x1:i*CSPAN+CW, cx:i*CSPAN+CW/2, z0:-CD/2, z1:CD/2, cz:0});
+const pick=(r,a)=>a[Math.floor(r()*a.length)|0];
+
+const PRISONER_NAMES=['BADGER','SPOON','TICKET','MAGPIE','CLOVER','DUSTY','RIVET','ASH',
+  'PENNY','HOLLOW','SCRAP','MARBLE','QUILL','TANNER','FLINT','BRAMBLE','NOOSE','SIXES',
+  'CANDLE','WREN','BASIL','TALLOW','PIKE','JUNIPER'];
+
+/* Each chamber builder returns the channel expression that opens its door.
+   They are handed a chamber rect and must leave a walkable route across it. */
+const CHAMBERS={
+  /* ---- push crates onto weight pads -------------------------------------- */
+  plates(R,c,id,rng,hard){
+    R.floorAll(c);
+    const n=hard>1?2:1, chs=[];
+    for(let i=0;i<n;i++){
+      const z=n===1?0:(i?4.2:-4.2);
+      const ch=id+'p'+i; chs.push(ch);
+      R.B.ent(new Plate(c.x1-3.5,0,z,ch,{w:1.7,crate:true,latch:true}));
+      R.B.ent(new Crate(c.x0+4,0,z,{s:1.2,metal:rng()<.5}));
+    }
+    R.note(c,'PAD IS WEIGHT-HELD — USE A CRATE, NOT YOURSELF');
+    return chs;
+  },
+  /* ---- throw the breakers ------------------------------------------------ */
+  levers(R,c,id,rng,hard){
+    R.floorAll(c);
+    const n=hard>1?3:2, chs=[];
+    for(let i=0;i<n;i++){
+      const ch=id+'l'+i; chs.push(ch);
+      const north=i%2===0;
+      R.B.ent(new Lever(c.x0+4+i*4.5, 1.3, north?c.z0+.45:c.z1-.45, ch,
+        {kind:'breaker', rot:north?0:Math.PI, label:'THROW BREAKER '+(i+1)}));
+    }
+    return chs;
+  },
+  /* ---- a gap in the floor with fixed stepping platforms ------------------ */
+  jump(R,c,id,rng,hard){
+    const p0=c.x0+5, p1=c.x1-5;
+    R.floorExcept(c,p0,p1);
+    R.pit(p0,p1,c);
+    // three pads across a 8m gap: every hop is <=3.2m and rises <=0.9m
+    const n=3, span=(p1-p0)/(n+1);
+    for(let i=0;i<n;i++){
+      const x=p0+span*(i+1);
+      const z=(i%2===0)?0:(rng()<.5?2.6:-2.6);
+      R.B.plat(x,.55+(i===1?.75:0),z,2.8,2.8,MAT.grate);
+    }
+    const ch=id+'j';
+    R.B.ent(new Lever(c.x1-2.2,1.3,c.z0+.45,ch,{kind:'valve',label:'OPEN THE LOCK'}));
+    return ch;
+  },
+  /* ---- ferries over a gap ------------------------------------------------ */
+  movers(R,c,id,rng,hard){
+    const p0=c.x0+4.5, p1=c.x1-4.5;
+    R.floorExcept(c,p0,p1);
+    R.pit(p0,p1,c);
+    const mid=(p0+p1)/2;
+    R.B.ent(new Mover(mid,1.0,-3.6,3.2,3.2,[mid,1.0,3.6],
+      {speed:1.5+ (hard>1?.5:0), mode:'ping', wait:1.4}));
+    R.B.plat(p0+2.2,.9,0,2.6,3.2,MAT.grate);
+    R.B.plat(p1-2.2,.9,0,2.6,3.2,MAT.grate);
+    const ch=id+'m';
+    R.B.ent(new Lever(c.x1-2.2,1.3,c.z1-.45,ch,{kind:'valve',rot:Math.PI,label:'RELEASE THE LOCK'}));
+    return ch;
+  },
+  /* ---- blinking beams across the room ------------------------------------ */
+  lasers(R,c,id,rng,hard){
+    R.floorAll(c);
+    const n=hard>1?3:2;
+    for(let i=0;i<n;i++){
+      const x=c.x0+5+i*((CW-10)/Math.max(1,n-1||1));
+      R.B.ent(new Hazard(x,1.3,0,.07,2.6,CD-1,
+        {kind:'laser', blink:[1.5,2.0, i*0.9], reason:'Broke a motion beam'}));
+    }
+    const ch=id+'b';
+    R.B.ent(new Lever(c.x1-2.2,1.3,c.z0+.45,ch,{kind:'breaker',label:'CUT THE BEAM CIRCUIT'}));
+    return ch;
+  },
+  /* ---- find the keycard, swipe it ---------------------------------------- */
+  card(R,c,id,rng,hard){
+    R.floorAll(c);
+    const col=pick(rng,['blue','green','red','yellow']);
+    // two steps up to a ledge, each rise well inside a standing jump
+    R.B.plat(c.x0+3.5,1.2,c.z0+2.4,3,3,MAT.metal);
+    R.B.plat(c.x0+6.5,2.4,c.z0+2.4,3,3,MAT.metal);
+    R.B.ent(new Pickup(c.x0+6.5,3.0,c.z0+2.4,
+      {key:'card_'+col,label:col.toUpperCase()+' KEYCARD',kind:'card',color:CARD_COL[col]}));
+    const ch=id+'c';
+    R.B.ent(new Reader(c.x1-1.0,1.5,-2.2,col,ch,{rot:-Math.PI/2}));
+    return ch;
+  },
+  /* ---- an officer on a circuit ------------------------------------------- */
+  guard(R,c,id,rng,hard){
+    R.floorAll(c);
+    for(const z of [-4.5,4.5]) R.B.ent(new Crate(c.x0+6+rng()*4,0,z,{s:1.3,metal:true}));
+    R.B.ent(new Guard([[c.x0+3,-5],[c.x1-3,-5],[c.x1-3,5],[c.x0+3,5]],
+      {speed:1.8+(hard>1?.5:0), pause:1.2, range:11, fov:.5,
+       female:rng()<.5, skin:(rng()*6)|0, hair:(rng()*7)|0}));
+    const ch=id+'g';
+    R.B.ent(new Lever(c.x1-2.2,1.3,c.z1-.45,ch,{kind:'breaker',rot:Math.PI,label:'THROW THE BREAKER'}));
+    return ch;
+  },
+  /* ---- four buttons, order written on the wall --------------------------- */
+  seq(R,c,id,rng,hard){
+    R.floorAll(c);
+    const order=[0,1,2,3];
+    for(let i=order.length-1;i>0;i--){ const j=(rng()*(i+1))|0; const t=order[i]; order[i]=order[j]; order[j]=t; }
+    const ch=id+'s';
+    seqDef(id,order,ch);
+    const lbl=['A','B','C','D'];
+    for(let i=0;i<4;i++)
+      R.B.ent(new Button(c.x0+5+i*2.1,1.5,c.z0+.45,{group:id,idx:i,label:lbl[i]}));
+    R.B.ent(new Sign(c.x1-3,1.5,c.z1-.5,
+      ['Scratched beside the panel:','"ORDER:  '+order.map(i=>lbl[i]).join('  —  ')+'"',
+       'A wrong press just resets it. Nothing alarms.'],
+      {label:'ORDER',rot:Math.PI,ch:id+'read'}));
+    return ch;
+  },
+  /* ---- crawl the duct ---------------------------------------------------- */
+  vent(R,c,id,rng,hard){
+    R.floorAll(c);
+    const wx=c.cx;
+    // solid above crawl height: the only way through is crouched
+    R.B.solid(wx,1.35+(CHH-1.35)/2,0,1.2,CHH-1.35,CD,MAT.metal);
+    R.B.ent(new Lamp(wx,CHH-1,0,{i:1.0,dist:9,flicker:true}));
+    const ch=id+'v';
+    R.B.ent(new Lever(c.x1-2.2,1.3,c.z0+.45,ch,{kind:'valve',label:'OPEN THE HATCH'}));
+    R.note(c,'DUCT CLEARANCE 1.3m — CROUCH');
+    return ch;
+  },
+  /* ---- somebody who will help -------------------------------------------- */
+  friend(R,c,id,rng,hard){
+    R.floorAll(c);
+    const ch=id+'n';
+    const nm=pick(rng,PRISONER_NAMES);
+    R.B.ent(new NPC(c.x0+5,0,rng()<.5?3.5:-3.5,{name:nm,female:rng()<.5,
+      skin:(rng()*6)|0, hair:(rng()*7)|0, rot:rng()*2-1, ch,
+      lines:R.theme.talk(nm),
+      after:['Go on. Before somebody counts heads.']}));
+    R.B.ent(new Crate(c.x1-5,0,0,{s:1.2}));
+    return ch;
+  }
+};
+
+/* ---- the wings ------------------------------------------------------------ */
+const MODULES=[
+  {name:'THE OLD WING', sub:'The original break', handmade:true},
+  {name:'THE FOUNDRY', sub:'Heat, slag and moving steel', accent:0xff7a2a,
+   mats:{floor:'concrete',wall:'rust',ceil:'metal'},
+   amb:{fog:0x140a06,far:52,hemi:.16,sun:.22,sunPos:[18,26,-12]},
+   kit:['plates','levers','movers','lasers','guard','jump'],
+   names:['Slag Line','Pour Floor','Ladle Run','Cooling Beds','Crucible','Rolling Mill',
+          'Scale Pit','Blast Deck','Tap Hole','Furnace Gate'],
+   talk:n=>['They keep the doors on the same circuit as the blowers. Cut one, you cut both.',
+            'I have been on the pour floor eleven years. I know every catwalk in here.',
+            'Take the far door. I will say I saw nothing, because I did.']},
+  {name:'THE ARCHIVE', sub:'Paper, dust and motion sensors', accent:0xd9c27a,
+   mats:{floor:'wood',wall:'concrete',ceil:'concrete'},
+   amb:{fog:0x0d0c0a,far:40,hemi:.13,sun:.12,sunPos:[-14,22,10]},
+   kit:['lasers','seq','card','vent','levers','friend'],
+   names:['Intake','Ledgers','Stacks A','Stacks B','Microfilm','Reading Room',
+          'Restricted','Deep Stacks','Records Vault','Registry Door'],
+   talk:n=>['Quiet. The beams here read movement, not weight.',
+            'Every man in this place has a folder. Mine is thicker than my arm.',
+            'The order is always written down somewhere. They cannot remember it either.']},
+  {name:'HYDROPONICS', sub:'Wet floors and grow lamps', accent:0x6fd98a,
+   mats:{floor:'tile',wall:'tile',ceil:'metal'},
+   amb:{fog:0x0a1410,far:46,hemi:.22,sun:.26,sunPos:[10,24,14]},
+   kit:['plates','jump','movers','friend','levers','card'],
+   names:['Nursery','Trays','Misting Hall','Root Cellar','Pump Room','Long Beds',
+          'Seed Store','Overflow','Filter Deck','Garden Gate'],
+   talk:n=>['Careful, the floor is always wet through here.',
+            'I grow tomatoes for men who will never taste them. You will, though.',
+            'The pumps and the doors share a board. Always have.']},
+  {name:'THE KENNELS', sub:'They walk the dogs at four', accent:0xff5a4d,
+   mats:{floor:'dirt',wall:'concrete',ceil:'concrete'},
+   amb:{fog:0x0b0908,far:50,hemi:.15,sun:.20,sunPos:[-20,28,-8]},
+   kit:['guard','levers','plates','lasers','jump','vent'],
+   names:['Runs','Feed Store','Wash Down','Training Yard','Night Pens','Handler Hut',
+          'Quarantine','Long Run','Muster','Kennel Gate'],
+   talk:n=>['Do not run. Whatever you do in here, do not run.',
+            'The handlers count the dogs twice a shift. They never count us.',
+            'Stay behind the crates when the beam swings. It is only four seconds.']},
+  {name:'COLD STORAGE', sub:'Everything in here keeps', accent:0x8fd8ff,
+   mats:{floor:'metal',wall:'metal',ceil:'metal'},
+   amb:{fog:0x08111a,far:38,hemi:.20,sun:.16,sunPos:[6,26,-16]},
+   kit:['plates','vent','movers','seq','lasers','levers'],
+   names:['Airlock','Chill Hall','Carcass Rail','Ice Room','Compressors','Blast Freezer',
+          'Pallet Stacks','Brine Tanks','Loading Bay','Cold Gate'],
+   talk:n=>['Keep moving or you will stiffen up. I am not joking.',
+            'Nine degrees below and they still call it a work detail.',
+            'The hatch releases are on the far wall. Always the far wall.']},
+  {name:'THE QUARRY', sub:'Open sky, no cover', accent:0xd9a05a,
+   mats:{floor:'dirt',wall:'concrete',ceil:'concrete'},
+   amb:{fog:0x0d0f14,far:80,hemi:.18,sun:.24,sunPos:[26,34,20]},
+   kit:['jump','movers','guard','plates','levers','friend'],
+   names:['Cut Face','Spoil Heap','Crusher','Haul Road','Bench One','Bench Two',
+          'Powder Store','Sump','Weighbridge','Quarry Gate'],
+   talk:n=>['Twelve hours of rock a day. You get to know the ground.',
+            'Watch the haul road. They sweep it with the lamps on the hour.',
+            'When you get out, do not stop at the tree line. Keep going.']},
+  {name:'SIGNAL TOWER', sub:'Straight up, all the way', accent:0xffd24d,
+   mats:{floor:'grate',wall:'metal',ceil:'metal'},
+   amb:{fog:0x070a12,far:60,hemi:.14,sun:.18,sunPos:[-24,36,24],night:true},
+   kit:['jump','movers','lasers','seq','levers','vent'],
+   names:['Base Plate','Cable Run','Relay One','Relay Two','Dish Deck','Mast Ladder',
+          'Repeater','Aerial Walk','Beacon','Tower Door'],
+   talk:n=>['Do not look down and do not touch the grey cables.',
+            'Everything up here is on one board. One board, one door.',
+            'I fix the aerials. Nobody watches a man with a toolbag.']},
+  {name:'THE DEEP', sub:'Below the water table', accent:0x4da6ff,
+   mats:{floor:'concrete',wall:'concrete',ceil:'concrete'},
+   amb:{fog:0x03080e,far:32,hemi:.12,sun:.08,sunPos:[0,20,-20]},
+   kit:['vent','movers','jump','plates','lasers','friend'],
+   names:['Stair Head','Sump One','Culvert','Pump House','Overflow','Sump Two',
+          'Silt Trap','Old Drain','Rising Main','Deep Gate'],
+   talk:n=>['Listen for the pumps. When they stop, the water comes up.',
+            'There are tunnels down here older than the prison.',
+            'Follow the pipe. The pipe always goes somewhere.']},
+  {name:'FREEDOM ROAD', sub:'The last mile', accent:0xffb144,
+   mats:{floor:'dirt',wall:'concrete',ceil:'concrete'},
+   amb:{fog:0x06090f,far:95,hemi:.16,sun:.20,sunPos:[30,40,-26],night:true},
+   kit:['guard','lasers','jump','movers','plates','seq','card'],
+   names:['Outer Yard','Wire Line','Ditch','Access Track','Checkpoint','Old Sidings',
+          'Culvert Run','Fence Line','Last Field','The Road'],
+   talk:n=>['You are close now. Close is when people get careless.',
+            'Do not take the track. They drive it. Take the ditch.',
+            'If you make it, do not write. Just be somewhere else.']}
+];
+
+/* ---- assemble one generated level ----------------------------------------- */
+function genBuild(mi,ki){
+  const mod=MODULES[mi];
+  const rng=rngFrom(mi*7919 + ki*104729 + 13);
+  const hard=1 + Math.floor(ki/4);                 // 1..3 across the module
+  const n=3 + Math.floor(ki/2);                    // 3..7 chambers
+  const MF=MAT[mod.mats.floor]||MAT.floor, MW=MAT[mod.mats.wall]||MAT.wall,
+        MC=MAT[mod.mats.ceil]||MAT.concrete;
+  const endX=(n-1)*CSPAN+CW;
+
+  const R={
+    B, theme:mod,
+    floorAll(c){ B.fl(c.x0-1,c.x1+1,c.z0,c.z1,0,MF); },
+    floorExcept(c,px0,px1){
+      B.fl(c.x0-1,px0,c.z0,c.z1,0,MF);
+      B.fl(px1,c.x1+1,c.z0,c.z1,0,MF);
+    },
+    pit(px0,px1,c){
+      B.ent(new Hazard((px0+px1)/2,-6,c.cz,(px1-px0)+1.5,11,CD+1.5,
+        {kind:'pit',color:0x05060a,reason:'Went into the gap'}));
+    },
+    note(c,txt){ if(rng()<.5) B.ent(new Sign(c.x0+2.2,1.6,c.z0+.5,
+      ['Stencilled on the wall:','"'+txt+'"'],{label:'NOTICE'})); }
+  };
+
+  B.spawn(2.5,.15,0);
+  // shell
+  B.ceil(-3,endX+3,-CD/2,CD/2,CHH,MC);
+  B.wx(-3,endX+3,-CD/2,0,CHH,MW); B.wx(-3,endX+3,CD/2,0,CHH,MW);
+  B.wz(-CD/2,CD/2,-3,0,CHH,MW);
+  B.wz(-CD/2,-2.4,endX+2,0,CHH,MW); B.wz(2.4,CD/2,endX+2,0,CHH,MW);
+
+  const keys=Object.keys(CHAMBERS).filter(k=>mod.kit.includes(k));
+  let prev=null;
+  for(let i=0;i<n;i++){
+    const c=chamberAt(i), id='c'+i+'_';
+    // pick a challenge, avoiding an immediate repeat
+    let kind=pick(rng,keys), guard=0;
+    while(kind===prev&&keys.length>1&&guard++<8) kind=pick(rng,keys);
+    prev=kind;
+    const req=CHAMBERS[kind](R,c,id,rng,hard);
+    B.ent(new Lamp(c.cx,CHH-1.1,0,{i:1.6,dist:15,color:mod.accent}));
+    B.ent(new Lamp(c.cx,CHH-1.4,c.z0+3,{i:.9,dist:11}));
+    if(i>0) B.ent(new Checkpoint(c.x0+1.5,0,0));
+    if(i<n-1){
+      const wx=c.x1+CGAP/2;
+      B.wz(-CD/2,-1.5,wx,0,CHH,MW,CGAP);
+      B.wz(1.5,CD/2,wx,0,CHH,MW,CGAP);
+      B.ent(new Door(wx,0,0,3.0,3.8,CGAP*.9,req,{mode:'up',rot:Math.PI/2}));
+      B.task('Chamber '+(i+1)+' — open the way through',req);
+    }else{
+      B.ent(new Exit(endX+1.4,0,0,req,{rot:Math.PI/2}));
+      B.task('Reach the far door',req);
+    }
+  }
+}
+
+function genDescriptors(){
+  const out=[];
+  for(let m=1;m<MODULES.length;m++){
+    const mod=MODULES[m];
+    for(let k=0;k<10;k++) out.push({
+      name:(mod.names[k]||('Sector '+(k+1))).toUpperCase(),
+      sub:mod.name.replace(/^THE /,'')+' · '+(k+1)+' of 10',
+      module:m, idx:k, amb:mod.amb,
+      build(){ genBuild(m,k); }
+    });
+  }
+  return out;
+}
+
 /* ============================================================================
    THE LEVELS
    ========================================================================== */
-const LEVELS=[
+const HANDMADE=[
 /* ------------------------------------------------------------------ 1 ---- */
 {
 name:'CELL BLOCK D', sub:'22:40 — Lights out',
@@ -2998,6 +3312,9 @@ build(){
   B.task('Load the counterweight pad','gateWeight');
 }}
 ];
+/* ten hand-built levels, then nine generated wings of ten */
+const LEVELS=HANDMADE.concat(genDescriptors());
+const moduleOf=i=>i<10?0:Math.floor(i/10);
 /* ============================================================================
    RENDERER / SCENE
    ========================================================================== */
@@ -3265,7 +3582,7 @@ function taskDone(t){
 }
 function updateHUD(){
   const L=LEVELS[G.level];
-  $('hLv').textContent='LEVEL '+(G.level+1)+' OF '+LEVELS.length;
+  $('hLv').textContent='WING '+(moduleOf(G.level)+1)+' · LEVEL '+(G.level+1)+' / '+LEVELS.length;
   $('hNm').textContent=L.name;
   $('hTasks').innerHTML=G.tasks.map(t=>
     '<div class="tk'+(taskDone(t)?' done':'')+'">'+t.text+'</div>').join('');
@@ -3492,16 +3809,30 @@ function renderPreview(t,dt){
 
 /* ---- level select ---- */
 function buildLevelGrid(){
-  $('lvGrid').innerHTML=LEVELS.map((L,i)=>{
-    const un=i<PROG.unlocked, dn=PROG.done.includes(i);
-    const bt=PROG.best['l'+i];
-    return '<div class="lvcard'+(un?'':' locked')+'" data-i="'+i+'">'+
-      '<div class="n">LEVEL '+String(i+1).padStart(2,'0')+'</div>'+
-      '<div class="t">'+(un?L.name:'LOCKED')+'</div>'+
-      '<div class="s">'+(un?(L.sub||''):'Clear the previous level')+'</div>'+
-      (dn?'<div class="done">✓ CLEARED'+(bt?' · '+fmt(bt):'')+'</div>':'')+
-      '</div>';
-  }).join('');
+  let html='';
+  for(let m=0;m<MODULES.length;m++){
+    const mod=MODULES[m], first=m*10;
+    const cleared=PROG.done.filter(i=>i>=first&&i<first+10).length;
+    const open=first<PROG.unlocked;
+    html+='<div class="modhead'+(open?'':' lockedmod')+'">'+
+      '<span class="mn">WING '+(m+1)+'</span><span class="mt">'+
+      (open?mod.name:'SEALED')+'</span><span class="ms">'+
+      (open?(mod.sub||'')+' · '+cleared+'/10 cleared':'Clear the wing before it')+'</span></div>';
+    if(!open) continue;
+    html+='<div class="lvgrid">';
+    for(let k=0;k<10;k++){
+      const i=first+k, L=LEVELS[i];
+      const un=i<PROG.unlocked, dn=PROG.done.includes(i), bt=PROG.best['l'+i];
+      html+='<div class="lvcard'+(un?'':' locked')+'" data-i="'+i+'">'+
+        '<div class="n">'+String(i+1).padStart(3,'0')+'</div>'+
+        '<div class="t">'+(un?L.name:'LOCKED')+'</div>'+
+        '<div class="s">'+(un?(L.sub||''):'—')+'</div>'+
+        (dn?'<div class="done">✓'+(bt?' '+fmt(bt):'')+'</div>':'')+
+        '</div>';
+    }
+    html+='</div>';
+  }
+  $('lvGrid').innerHTML=html;
   $('lvGrid').onclick=e=>{
     const c=e.target.closest('.lvcard'); if(!c||c.classList.contains('locked')) return;
     G.runStart=performance.now(); G.deaths=0; G.allies=new Set();
