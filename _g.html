@@ -176,7 +176,46 @@
     font-size:13px;color:#9fadbd;align-items:center}
   .helpgrid b{color:#dbe4ee;font-weight:600}
 </style>
-</head>
+<script>
+try{window.AudioContext=undefined;window.webkitAudioContext=undefined;}catch(e){}
+try{localStorage.setItem('ig_set',JSON.stringify({qual:'low',snd:0,sens:110,view:'first'}));}catch(e){}
+var __n=0;
+window.requestAnimationFrame=function(cb){ if(++__n>260) return 0;
+  return setTimeout(function(){ cb(performance.now()); },25); };
+window.__log=[];window.__errs=[];
+addEventListener('error',e=>{window.__errs.push('ERR: '+(e.message||e.error));});
+function key(c,d){ dispatchEvent(new KeyboardEvent(d?'keydown':'keyup',{code:c,bubbles:true})); }
+function L(s){window.__log.push(s);}
+function at(ms,fn){ setTimeout(function(){ try{fn();}catch(e){ L('THREW@'+ms+': '+e.message); } },ms); }
+var p0;
+at(150,function(){ document.getElementById('bPlay').click(); });
+at(1200,function(){
+  var G=window.__ig.G; p0={x:G.player.pos.x,z:G.player.pos.z};
+  L('spawnZ='+p0.z.toFixed(2)+' restY='+G.player.pos.y.toFixed(2)+' grounded='+G.player.grounded);
+  key('KeyS',true);
+});
+at(2600,function(){
+  var G=window.__ig.G; key('KeyS',false);
+  L('walked='+Math.hypot(G.player.pos.x-p0.x,G.player.pos.z-p0.z).toFixed(2)+
+    ' z='+G.player.pos.z.toFixed(2)+' grounded='+G.player.grounded);
+  L('shutBarsStoppedUs='+(G.player.pos.z<-6.3));
+  G.crates[0].box.setCenter(2.0,0.6,-11.4);        // footlocker onto the pad
+});
+at(3400,function(){
+  var G=window.__ig.G, door=G.ents.find(function(e){return e.constructor.name==='Door';});
+  L('PLATE->CHANNEL='+!!G.ch.cellA+'  DOOR OPEN='+door.open+' slide='+door.t.toFixed(2)+
+    ' colliderOff='+!door.box.enabled);
+  key('KeyS',true);
+});
+at(4900,function(){
+  var G=window.__ig.G; key('KeyS',false);
+  L('ESCAPED CELL='+(G.player.pos.z>-6.2)+' z='+G.player.pos.z.toFixed(2)+' caught='+G.deaths);
+  L('frames='+__n);
+  var d=document.createElement('div');d.id='ERRLOG';
+  d.textContent='LOG: '+window.__log.join(' | ')+' ###ERR['+window.__errs.length+']: '+window.__errs.join(' || ');
+  document.body.appendChild(d);
+});
+</script></head>
 <body class="scanlines">
 <canvas id="c"></canvas>
 <div class="vig"></div>
@@ -560,7 +599,7 @@ function shapeHead(g,female,k=1){
     v.fromBufferAttribute(p,i);
     const ux=v.x,uy=v.y,uz=v.z;
     const low=sstep(.12,-.92,uy);                  // 0 at the brow, 1 under the chin
-    const taper=1-(female?.42:.41)*low*low;
+    const taper=1-(female?.36:.41)*low*low;
     let X=ux*RX*taper, Y=uy*RY, Z=uz*RZ*taper;
     if(uz>0) Z+=.018*low*sstep(0,.55,uz)*k;        // chin and jawline come forward
     Z+=.006*sstep(.12,.50,uy)*sstep(.30,.92,uz)*(1-sstep(.55,.95,uy))*k;   // brow
@@ -577,7 +616,7 @@ function shapeHead(g,female,k=1){
    gives a hairline that curves around the temples instead of a bowl-cut ring,
    and lets the sides and back hang long without covering the face. */
 function hairGeo(female,o={}){
-  const g=new THREE.SphereGeometry(1,52,38);
+  const g=new THREE.SphereGeometry(1,36,28);
   const p=g.attributes.position, v=new THREE.Vector3();
   const K=o.k??1.05, IN=.88;
   const hl=o.hairline??.52;              // uy where the front hair stops
@@ -596,13 +635,10 @@ function hairGeo(female,o={}){
     X*=1-.07*sstep(.25,.95,Math.abs(ux));
     if(fall){
       // draw the back and sides downward into a mass that clears the shoulders
-      const back=1-sstep(-.15,.55,uz), side=sstep(.34,.98,Math.abs(ux));
-      const m=Math.max(back,side*.55)*(1-sstep(.30,.80,uy))*(1-open);
-      const drop=m*(1-.45*side);            // sides sit shorter than the back
-      Y-=drop*fall;
-      X*=1+m*.07; Z*=1+m*.06;
-      Z-=drop*drop*.09;                     // ends curl in toward the neck
-      X*=1-drop*drop*.30;                   // and taper rather than hang square
+      const back=1-sstep(-.15,.55,uz), side=sstep(.30,.95,Math.abs(ux));
+      const m=Math.max(back,side*.85)*(1-sstep(.30,.80,uy))*(1-open);
+      Y-=m*fall;
+      X*=1+m*.16; Z*=1+m*.10;
     }
     p.setXYZ(i,X,Y,Z);
   }
@@ -693,9 +729,9 @@ function makeHuman(o={}){
         darkM,rig.head,sx*EX,EY+.0008,EZ);
       lash.rotation.x=-.30; lash.scale.set(1.06,.92,.82);
     }
-    const brow=mk(new THREE.SphereGeometry(female?.0170:.021,10,8),hairM,
+    const brow=mk(new THREE.SphereGeometry(female?.0185:.021,10,8),hairM,
       rig.head,sx*EX,EY+(female?.028:.030),.096*F);
-    brow.scale.set(female?1.10:1.2,female?.115:.20,.30); brow.rotation.z=sx*(female?.26:.15);
+    brow.scale.set(female?1.15:1.2,female?.15:.20,.34); brow.rotation.z=sx*(female?.19:.15);
   }
   // nose: bridge tapering into a rounded tip, not a cone stuck on the face
   const N=female?.88:1;
@@ -766,8 +802,7 @@ function makeHuman(o={}){
   // prison-issue shorts: one waistband that clearly sits outside the hips,
   // with legs that start high enough to merge into it
   mk(loft([{y:.095,rx:.150,rz:.104},{y:.03,rx:.174,rz:.119},
-           {y:-.04,rx:.186,rz:.124},{y:-.09,rx:.184,rz:.120},
-           {y:-.125,rx:.158,rz:.108}],22,'top'),
+           {y:-.04,rx:.188,rz:.125},{y:-.10,rx:.191,rz:.123}],22,'top'),
      clothM,rig.hips,0,0,0);
   for(const side of['L','R']){
     const sx=side==='L'?-1:1;
@@ -777,8 +812,7 @@ function makeHuman(o={}){
              {y:-.26,rx:.078*T,rz:.076*T},{y:-.38,rx:.067*T,rz:.065*T},
              {y:-.44,rx:.062*T,rz:.060*T}],20),skinM,hip,0,0,0);
     mk(loft([{y:.075,rx:.104*T,rz:.101*T},{y:-.02,rx:.108*T,rz:.104*T},
-             {y:-.12,rx:.106*T,rz:.102*T},{y:-.185,rx:.098*T,rz:.094*T},
-             {y:-.205,rx:.083*T,rz:.080*T}],20,false),
+             {y:-.12,rx:.106*T,rz:.102*T},{y:-.19,rx:.101*T,rz:.097*T}],20,false),
        clothM,hip,0,0,0);
     const knee=grp(hip,0,-.44,0);
     mk(new THREE.SphereGeometry(.057*T,14,12),skinM,knee,0,.005,0);
@@ -3224,18 +3258,12 @@ function disposeTree(root){
     if(o.geometry) o.geometry.dispose();
     if(o.material){
       const ms=Array.isArray(o.material)?o.material:[o.material];
-      // MAT.* and the shared TEX.* survive between levels. Everything else is
-      // per-level — including the canvas textures behind every name plate and
-      // button label, which material.dispose() does NOT release on its own.
-      for(const m of ms){
-        if(m.__shared) continue;
-        if(m.map&&!m.map.__shared) m.map.dispose();
-        m.dispose();
-      }
+      // MAT.* and the shared textures survive between levels
+      for(const m of ms) if(!m.__shared) m.dispose();
     }
   });
 }
-for(const k in MAT){ MAT[k].__shared=true; if(MAT[k].map) MAT[k].map.__shared=true; }
+for(const k in MAT) MAT[k].__shared=true;
 
 function clearLevel(){
   if(G.root){ scene.remove(G.root); disposeTree(G.root); }
@@ -3477,18 +3505,17 @@ function frame(now){
   }
 
   renderPreview(t,dt);
-  if(composer&&bloom&&bloom.enabled&&S.qual==='high') composer.render();
-  else renderer.render(scene,camera);
+  /* draw disabled: this harness measures simulation only */
 }
 
 /* ============================================================================
    BOOT
    ========================================================================== */
+window.__ig={G,world,LEVELS,AABB,overlaps,PH,cam};
 (function boot(){
   $('loadTxt').textContent='BUILDING TEXTURES';
   buildTextures(); buildMaterials();
-  for(const k in TEX) TEX[k].__shared=true;
-  for(const k in MAT){ MAT[k].__shared=true; if(MAT[k].map) MAT[k].map.__shared=true; }
+  for(const k in MAT) MAT[k].__shared=true;
   resize(); setupComposer(); applyQuality();
   buildSettingsUI(); buildPreview(); refreshCtrls();
   setupSky({fog:0x0a0e13,far:60,hemi:.2,sun:.2});

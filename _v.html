@@ -176,7 +176,50 @@
     font-size:13px;color:#9fadbd;align-items:center}
   .helpgrid b{color:#dbe4ee;font-weight:600}
 </style>
-</head>
+<script>
+try{window.AudioContext=undefined;window.webkitAudioContext=undefined;}catch(e){}
+try{localStorage.setItem('ig_prog',JSON.stringify({unlocked:10,done:[],best:{}}));}catch(e){}
+window.__errs=[];window.__log=[];
+addEventListener('error',e=>{window.__errs.push('ERR: '+(e.message||e.error));});
+addEventListener('unhandledrejection',e=>{window.__errs.push('REJ: '+(e.reason&&e.reason.stack||e.reason));});
+function L(s){window.__log.push(s);}
+function key(c){ dispatchEvent(new KeyboardEvent('keydown',{code:c,bubbles:true}));
+                 dispatchEvent(new KeyboardEvent('keyup',{code:c,bubbles:true})); }
+var i=0;
+function step(){
+  if(i>=10){ finish(); return; }
+  try{ document.getElementById('bLevels').click();
+       document.querySelectorAll('.lvcard')[i].click(); }catch(e){ window.__errs.push('c'+i+e); }
+  var idx=i;
+  setTimeout(function(){
+    try{
+      var A=window.__ig,G=A.G,out=[],p=G.player;
+      var pb=new A.AABB(p.pos.x,p.pos.y+A.PH.h/2,p.pos.z,A.PH.r*.9,A.PH.h/2-.05,A.PH.r*.9);
+      for(const b of A.world.all()) if(b.enabled&&A.overlaps(pb,b)){ out.push('STUCK'); break; }
+      var bad=0; G.scene.traverse(function(o){ if(!o.isMesh) return;
+        if(!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        if(!isFinite(o.geometry.boundingSphere.radius)) bad++; });
+      if(bad) out.push('BADGEO x'+bad);
+      L('L'+(idx+1)+(out.length?':'+out.join(','):':ok'));
+    }catch(e){ window.__errs.push('k'+idx+e); }
+    i++; step();
+  },1100);
+}
+setTimeout(step,2000);
+function finish(){
+  var A=window.__ig;
+  L('title="'+document.title+'"');
+  var v0=A.cam.fp; key('KeyV'); L('V:'+v0+'->'+A.cam.fp); key('KeyV');
+  var s0=A.S.snd; key('KeyM'); L('M:'+s0+'->'+A.S.snd); key('KeyM');
+  key('KeyP'); L('Ppause='+document.getElementById('sPause').classList.contains('on'));
+  key('KeyP'); L('Presume='+!document.getElementById('sPause').classList.contains('on'));
+  document.getElementById('cQuit').click();
+  L('quit->title='+document.getElementById('sTitle').classList.contains('on'));
+  var d=document.createElement('div');d.id='ERRLOG';
+  d.textContent='LOG: '+window.__log.join(' | ')+' ###ERR['+window.__errs.length+']: '+window.__errs.join(' || ');
+  document.body.appendChild(d);
+}
+</script></head>
 <body class="scanlines">
 <canvas id="c"></canvas>
 <div class="vig"></div>
@@ -3484,6 +3527,7 @@ function frame(now){
 /* ============================================================================
    BOOT
    ========================================================================== */
+window.__ig={G,world,AABB,overlaps,PH,cam,makeHuman,S};
 (function boot(){
   $('loadTxt').textContent='BUILDING TEXTURES';
   buildTextures(); buildMaterials();
