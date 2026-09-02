@@ -32,6 +32,20 @@ makes the room make sense.
 | `R` | Respawn at the last checkpoint |
 | `Esc` | Pause |
 
+## Difficulty
+
+Settings has three presets. They scale the things that actually decide whether a
+jump or a guard is fair, and can be changed mid-level:
+
+| | jump apex | edge forgiveness | guards / hazards |
+|---|---|---|---|
+| Relaxed | 2.22 m | 312 ms coyote | see less, lit for less, platforms wait ~2x |
+| Standard | 1.52 m | 120 ms | as designed |
+| Hard Time | 1.38 m | 74 ms | sharper eyes, hazards lit longer |
+
+On Relaxed a running jump clears about 6.5 m of flat ground, which is enough to
+cross the roof gaps without waiting for the moving platforms at all.
+
 ## Levels
 
 1. **Cell Block D** — footlocker on the pressure pad, then two breakers

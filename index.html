@@ -221,6 +221,9 @@
         <div class="seg" id="oSex"><button data-v="m">Boy</button><button data-v="f">Girl</button></div></div>
       <div class="row"><label>Skin tone</label><div class="seg" id="oSkin"></div></div>
       <div class="row"><label>Hair</label><div class="seg" id="oHair"></div></div>
+      <div class="row"><label>Difficulty<span class="hint" id="oDiffH"></span></label>
+        <div class="seg" id="oDiff"><button data-v="easy">Relaxed</button>
+          <button data-v="normal">Standard</button><button data-v="hard">Hard Time</button></div></div>
       <div class="row"><label>View<span class="hint">First person is the intended way to play</span></label>
         <div class="seg" id="oView"><button data-v="first">First person</button>
           <button data-v="third">Third person</button></div></div>
@@ -342,7 +345,18 @@ const $=id=>document.getElementById(id);
 /* ---------------------------------------------------------------- settings */
 const SKINS=[0xf2d3bb,0xe2b393,0xc48e69,0x9c6642,0x6f4527,0x4a2d1a];
 const HAIRS=[0x2b2018,0x5c3a1e,0x8d6234,0xd8b76a,0xa03824,0x2f3542,0xdcdcdc];
-const DEF={sex:'m',skin:2,hair:0,sens:110,inv:0,qual:'high',snd:1,view:'first'};
+const DEF={sex:'m',skin:2,hair:0,sens:110,inv:0,qual:'high',snd:1,view:'first',
+           diff:'normal'};
+/* Difficulty scales the things that actually decide whether a jump or a guard
+   is fair: air time, edge forgiveness, how long hazards stay lit, and how long
+   a moving platform waits for you. Read live, so changing it mid-level works. */
+const DIFFS={
+  easy:  {jump:1.10, grav:.84, coyote:2.6, buf:1.9, air:1.6, guard:.68, haz:.70, wait:1.9},
+  normal:{jump:1,    grav:1,   coyote:1,   buf:1,   air:1,   guard:1,   haz:1,   wait:1},
+  hard:  {jump:.98,  grav:1.06,coyote:.62, buf:.72, air:.84, guard:1.22,haz:1.25,wait:.72}
+};
+let D=DIFFS.normal;
+function applyDiff(){ D=DIFFS[S.diff]||DIFFS.normal; }
 let S=Object.assign({},DEF);
 let PROG={unlocked:1,done:[],best:{}};
 try{ Object.assign(S,JSON.parse(localStorage.getItem('ig_set')||'{}')); }catch(e){}
@@ -1010,7 +1024,7 @@ class Player{
 
     this.climbing=!!this.ladder&&(!this.grounded||input.z!==0);
 
-    const a=(this.grounded?PH.accel:PH.airAccel);
+    const a=(this.grounded?PH.accel:PH.airAccel*D.air);
     const targ=wish.multiplyScalar(maxSpd*(mag>0?1:0));
     this.vel.x=damp(this.vel.x,targ.x,this.grounded?a/3.2:a/6,dt);
     this.vel.z=damp(this.vel.z,targ.z,this.grounded?a/3.2:a/6,dt);
@@ -1038,13 +1052,13 @@ class Player{
     }
 
     /* ---- jump with coyote time + input buffering */
-    this.coyote=this.grounded?.12:Math.max(0,this.coyote-dt);
-    this.jumpBuf=input.jump?.14:Math.max(0,this.jumpBuf-dt);
+    this.coyote=this.grounded?.12*D.coyote:Math.max(0,this.coyote-dt);
+    this.jumpBuf=input.jump?.14*D.buf:Math.max(0,this.jumpBuf-dt);
     if(this.jumpBuf>0&&this.coyote>0&&!this.climbing){
-      this.vel.y=PH.jump*(this.crouch?.78:1);
+      this.vel.y=PH.jump*D.jump*(this.crouch?.78:1);
       this.coyote=0; this.jumpBuf=0; this.grounded=false; sfx('jump');
     }
-    if(!this.climbing) this.vel.y=Math.max(-PH.maxFall,this.vel.y-PH.gravity*dt);
+    if(!this.climbing) this.vel.y=Math.max(-PH.maxFall,this.vel.y-PH.gravity*D.grav*dt);
     if(this.inWater>0) this.vel.y=Math.max(this.vel.y,-2.4);
 
     /* ---- carried by a moving platform */
@@ -1658,9 +1672,9 @@ class Mover extends Ent{
       else{
         const len=this.a.distanceTo(this.b)||1;
         this.t+=this.dir*(this.speed/len)*dt;
-        if(this.t>=1){ this.t=1; if(this.mode==='ping'){this.dir=-1;this.waitT=this.wait;}
+        if(this.t>=1){ this.t=1; if(this.mode==='ping'){this.dir=-1;this.waitT=this.wait*D.wait;}
           else this.t=0; }
-        if(this.t<=0){ this.t=0; if(this.mode==='ping'){this.dir=1;this.waitT=this.wait;} }
+        if(this.t<=0){ this.t=0; if(this.mode==='ping'){this.dir=1;this.waitT=this.wait*D.wait;} }
       }
     }
     const p=this.a.clone().lerp(this.b,this.t);
@@ -1705,7 +1719,7 @@ class Hazard extends Ent{
     let on=reqMet(this.req); if(this.invert) on=!on;
     if(this.blink){
       const[a,b,ph]=this.blink; const c=(G.t+ph)%(a+b);
-      on=on&&c<a;
+      on=on&&c<a*D.haz;
     }
     this.active=on;
     if(!this.silent){
@@ -1867,7 +1881,8 @@ class Spot extends Ent{
     this.target.position.set(px,this.gy,pz);
     this.disc.position.set(px,this.gy+.03,pz);
     const p=G.player;
-    if(Math.hypot(p.pos.x-px,p.pos.z-pz)<this.rad&&Math.abs(p.pos.y-this.gy)<2.5)
+    this.disc.scale.setScalar(D.guard);
+    if(Math.hypot(p.pos.x-px,p.pos.z-pz)<this.rad*D.guard&&Math.abs(p.pos.y-this.gy)<2.5)
       caught('Caught in the searchlight');
   }
 }
@@ -1956,16 +1971,17 @@ class Guard extends Ent{
     const pc=V3(p.pos.x,p.pos.y+p.height*.55,p.pos.z);
     const to=pc.clone().sub(eye); const dd=to.length();
     let seen=false;
-    if(dd<this.range){
+    if(dd<this.range*D.guard){
       const fwd=V3(Math.sin(this.yaw),0,Math.cos(this.yaw));
       const flat=V3(to.x,0,to.z).normalize();
       const ang=Math.acos(clamp(fwd.dot(flat),-1,1));
       const crouchBonus=p.crouch?.62:1;
-      if(ang<this.fov&&dd<this.range*crouchBonus&&!losBlocked(eye,pc,this.box)) seen=true;
+      if(ang<this.fov*D.guard&&dd<this.range*D.guard*crouchBonus&&
+         !losBlocked(eye,pc,this.box)) seen=true;
     }
     if(dd<1.5&&!losBlocked(eye,pc,this.box)) seen=true;
     if(seen){
-      this.suspicion+=dt*(dd<4?3.4:1.9);
+      this.suspicion+=dt*(dd<4?3.4:1.9)*D.guard;
       G.alarm=Math.max(G.alarm,clamp(this.suspicion/1.15,0,1));
       this.cone.material.opacity=.10;
       this.cone.material.color.setHex(0xff5a3a);
@@ -3372,6 +3388,7 @@ function buildSettingsUI(){
   $('oHair').innerHTML=HAIRS.map((c,i)=>
     '<button class="swatch" data-v="'+i+'" style="background:#'+c.toString(16).padStart(6,'0')+'"></button>').join('');
   paints.push(segInit('oHair',null,()=>S.hair,v=>S.hair=+v));
+  paints.push(segInit('oDiff',null,()=>S.diff,v=>{S.diff=v; applyDiff(); diffHint();}));
   paints.push(segInit('oView',null,()=>S.view,
     v=>{S.view=v; cam.pitch=v==='third'?-.14:0; refreshCtrls();}));
   paints.push(segInit('oInv',null,()=>S.inv,v=>S.inv=+v));
@@ -3381,6 +3398,12 @@ function buildSettingsUI(){
   sl.value=S.sens; $('oSensV').textContent=S.sens;
   sl.oninput=()=>{ S.sens=+sl.value; $('oSensV').textContent=S.sens; saveSet(); };
 }
+const DIFF_HINT={
+  easy:'Higher, floatier jumps · far more edge forgiveness · guards and lasers give you room',
+  normal:'The intended balance',
+  hard:'Tighter jumps, sharper eyes, hazards lit for longer'
+};
+function diffHint(){ const e=$('oDiffH'); if(e) e.textContent=DIFF_HINT[S.diff]||''; }
 function onSettingsChanged(){ buildPreview(); }
 /* keep the settings highlights honest when a key or HUD button changed things */
 function repaintSettings(){ for(const p of paints) p(); }
@@ -3514,7 +3537,7 @@ function frame(now){
   for(const k in TEX) TEX[k].__shared=true;
   for(const k in MAT){ MAT[k].__shared=true; if(MAT[k].map) MAT[k].map.__shared=true; }
   resize(); setupComposer(); applyQuality();
-  buildSettingsUI(); buildPreview(); refreshCtrls();
+  applyDiff(); buildSettingsUI(); buildPreview(); refreshCtrls(); diffHint();
   setupSky({fog:0x0a0e13,far:60,hemi:.2,sun:.2});
   $('bPlay').textContent=PROG.unlocked>1?'Continue':'New Escape';
   setTimeout(()=>{ $('load').style.display='none'; $('fade').style.opacity=0; },260);
