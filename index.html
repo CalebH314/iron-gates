@@ -515,22 +515,22 @@ function buildMaterials(){
     {map:t,roughness:.92,metalness:.04},o));
   MAT.concrete=std(TEX.concrete);
   MAT.wall    =std(TEX.wall,{roughness:.96});
-  MAT.metal   =std(TEX.metal,{roughness:.52,metalness:.72,color:0xb9c2cb});
-  MAT.rust    =std(TEX.rust,{roughness:.88,metalness:.3});
-  MAT.tile    =std(TEX.tile,{roughness:.36,metalness:.08});
+  MAT.metal   =std(TEX.metal,{roughness:.55,metalness:.22,color:0xc6cfd8});
+  MAT.rust    =std(TEX.rust,{roughness:.88,metalness:.10});
+  MAT.tile    =std(TEX.tile,{roughness:.40,metalness:.03});
   MAT.floor   =std(TEX.floor,{roughness:.88});
-  MAT.grate   =std(TEX.grate,{roughness:.6,metalness:.6,color:0xa9b3bd});
+  MAT.grate   =std(TEX.grate,{roughness:.62,metalness:.20,color:0xb8c2cc});
   MAT.wood    =std(TEX.wood,{roughness:.85});
   MAT.dirt    =std(TEX.dirt,{roughness:1});
   MAT.dark    =new THREE.MeshStandardMaterial({color:0x1a1f26,roughness:.9});
-  MAT.bar     =new THREE.MeshStandardMaterial({color:0x757f89,roughness:.42,metalness:.85});
-  MAT.door    =new THREE.MeshStandardMaterial({map:TEX.metal,color:0x99a3ad,roughness:.45,metalness:.8});
-  MAT.bigdoor =new THREE.MeshStandardMaterial({map:TEX.rust,color:0xc0a070,roughness:.6,metalness:.65});
+  MAT.bar     =new THREE.MeshStandardMaterial({color:0x8d97a1,roughness:.48,metalness:.30});
+  MAT.door    =new THREE.MeshStandardMaterial({map:TEX.metal,color:0xa8b2bc,roughness:.50,metalness:.26});
+  MAT.bigdoor =new THREE.MeshStandardMaterial({map:TEX.rust,color:0xcaa878,roughness:.62,metalness:.22});
   MAT.crate   =new THREE.MeshStandardMaterial({map:TEX.wood,roughness:.85});
-  MAT.crateM  =new THREE.MeshStandardMaterial({map:TEX.metal,color:0x8d9099,roughness:.5,metalness:.7});
+  MAT.crateM  =new THREE.MeshStandardMaterial({map:TEX.metal,color:0x9aa0aa,roughness:.55,metalness:.24});
   MAT.glass   =new THREE.MeshStandardMaterial({color:0x9fd8e8,roughness:.06,metalness:.1,
                  transparent:true,opacity:.22});
-  MAT.water   =new THREE.MeshStandardMaterial({color:0x2d6a7a,roughness:.12,metalness:.35,
+  MAT.water   =new THREE.MeshStandardMaterial({color:0x3a8296,roughness:.16,metalness:.14,
                  transparent:true,opacity:.72});
 }
 const emiss=(c,i=1.6)=>new THREE.MeshStandardMaterial(
@@ -3270,7 +3270,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.48;
+renderer.toneMappingExposure=1.86;
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
@@ -3304,19 +3304,38 @@ function resize(){
 }
 addEventListener('resize',resize);
 
-let hemi=null,sun=null,skyMesh=null,stars=null,fill=null;
+let hemi=null,sun=null,skyMesh=null,stars=null,fill=null,envMap=null;
+/* A tiny sky/ground gradient, prefiltered. Without this every metal surface in
+   the game is lit only by direct lights and reads as black. */
+function buildEnvironment(){
+  const cv=document.createElement('canvas'); cv.width=64; cv.height=32;
+  const g=cv.getContext('2d');
+  const grd=g.createLinearGradient(0,0,0,32);
+  grd.addColorStop(0,'#b9cadd'); grd.addColorStop(.48,'#7d8a9b'); grd.addColorStop(1,'#454b54');
+  g.fillStyle=grd; g.fillRect(0,0,64,32);
+  const t=new THREE.CanvasTexture(cv);
+  t.mapping=THREE.EquirectangularReflectionMapping;
+  try{
+    const pm=new THREE.PMREMGenerator(renderer);
+    envMap=pm.fromEquirectangular(t).texture;
+    pm.dispose();
+  }catch(e){ console.warn('env map unavailable',e); }
+  t.dispose();
+  return envMap;
+}
 /* The dark levels were unreadable, so every light source gets a lift and a
    floor value — the mood survives, but you can actually see the platforms. */
-const LIT={hemi:2.7, hemiMin:.36, sun:1.85, lamp:1.75, lampDist:1.45,
-           fill:.30, fogNear:14, fogFar:1.35};
+const LIT={hemi:4.4, hemiMin:.72, sun:2.6, lamp:2.5, lampDist:1.75,
+           fill:.56, fogNear:28, fogFar:1.8, fogLift:.38};
 function setupSky(amb){
   if(hemi) scene.remove(hemi);
   if(sun) scene.remove(sun);
   if(fill) scene.remove(fill);
   if(skyMesh){ scene.remove(skyMesh); skyMesh.geometry.dispose(); skyMesh.material.dispose(); }
   if(stars){ scene.remove(stars); stars.geometry.dispose(); stars.material.dispose(); stars=null; }
-  scene.fog=new THREE.Fog(amb.fog,LIT.fogNear,(amb.far||60)*LIT.fogFar);
-  scene.background=new THREE.Color(amb.fog);
+  const fogCol=new THREE.Color(amb.fog).lerp(new THREE.Color(0x6a7a90),LIT.fogLift);
+  scene.fog=new THREE.Fog(fogCol,LIT.fogNear,(amb.far||60)*LIT.fogFar);
+  scene.background=fogCol.clone();
   hemi=new THREE.HemisphereLight(0x9fb6d4,0x2a2620,
     Math.max(LIT.hemiMin,(amb.hemi??.18)*LIT.hemi));
   scene.add(hemi);
@@ -3331,6 +3350,7 @@ function setupSky(amb){
   c.left=-45;c.right=45;c.top=45;c.bottom=-45;c.near=1;c.far=140;
   sun.shadow.bias=-.0009; sun.shadow.normalBias=.035;
   scene.add(sun); scene.add(sun.target);
+  if(envMap) scene.environment=envMap;
   if(amb.night){
     const g=new THREE.BufferGeometry();
     const n=900,p=new Float32Array(n*3);
@@ -3896,7 +3916,7 @@ function frame(now){
   buildTextures(); buildMaterials();
   for(const k in TEX) TEX[k].__shared=true;
   for(const k in MAT){ MAT[k].__shared=true; if(MAT[k].map) MAT[k].map.__shared=true; }
-  resize(); setupComposer(); applyQuality();
+  resize(); setupComposer(); buildEnvironment(); applyQuality();
   applyDiff(); buildSettingsUI(); buildPreview(); refreshCtrls(); diffHint();
   setupSky({fog:0x0a0e13,far:60,hemi:.2,sun:.2});
   $('bPlay').textContent=PROG.unlocked>1?'Continue':'New Escape';
