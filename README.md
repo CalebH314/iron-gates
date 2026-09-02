@@ -32,6 +32,11 @@ makes the room make sense.
 | `R` | Respawn at the last checkpoint |
 | `Esc` | Pause |
 
+## Unlock code
+
+Typing **951413** on any menu screen, or entering it in Settings, opens all
+100 levels at once.
+
 ## Difficulty
 
 Settings has three presets. They scale the things that actually decide whether a
@@ -83,10 +88,8 @@ produced by something actually present in the level.
   moving-platform carry, pushable crates, crouch with headroom checks
 - First-person by default: the camera sits inside the (hidden) head, the body
   turns with the view, and a small head bob and roll are driven by the walk cycle
-- Characters are lofted through stacks of elliptical rings on a hand-made rig, so
-  limbs taper and bulge the way real ones do; heads are a unit sphere pushed into
-  a skull — tapered jaw, forward chin, brow ridge, flatter temples — and the hair
-  reuses the same displacement so it sits on the skull rather than around it
+- Characters are built entirely from axis-aligned boxes on a hand-made rig —
+  35 blocks for a boy, 41 for a girl, head about a quarter of body height
 - Animation is procedural: walk, run, jump, climb and crouch are all driven by
   sine phase rather than keyframes
 - Puzzle logic is a channel system: devices set named channels, doors listen to

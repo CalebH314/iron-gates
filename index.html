@@ -64,6 +64,14 @@
   .swatch:hover{transform:scale(1.08)}
   .swatch.sel{border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,177,68,.22)}
   input[type=range]{width:190px;accent-color:var(--amber);cursor:pointer}
+  .codewrap{display:flex;gap:7px;align-items:center}
+  .codewrap input{background:#0f141b;border:1px solid var(--line);color:#e6edf5;
+    border-radius:3px;padding:8px 11px;width:130px;font-family:inherit;font-size:13px;
+    letter-spacing:.22em;text-align:center;outline:none}
+  .codewrap input:focus{border-color:var(--amber)}
+  .codewrap input.bad{border-color:var(--danger);animation:shake .3s}
+  .codewrap input.good{border-color:var(--good);color:var(--good)}
+  @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
   .preview{width:230px;height:300px;background:radial-gradient(ellipse at 50% 40%,#1b2430,#080b0f);
     border:1px solid var(--line);border-radius:5px;flex:0 0 auto}
   .setwrap{display:flex;gap:26px;align-items:flex-start}
@@ -244,6 +252,10 @@
       <div class="row"><label>Graphics<span class="hint">Shadows, bloom, draw quality</span></label>
         <div class="seg" id="oQual"><button data-v="low">Low</button><button data-v="med">Medium</button>
           <button data-v="high">High</button></div></div>
+      <div class="row"><label>Unlock code<span class="hint" id="oCodeH">Opens every wing at once</span></label>
+        <div class="codewrap"><input id="oCode" type="text" inputmode="numeric" maxlength="10"
+          autocomplete="off" spellcheck="false" placeholder="••••••">
+          <button class="btn sm" id="bCode">Enter</button></div></div>
       <div class="row"><label>Sound</label>
         <div class="seg" id="oSnd"><button data-v="0">Off</button><button data-v="1">On</button></div></div>
     </div>
@@ -539,100 +551,7 @@ function boxGeo(w,h,d,s=.42){
    Everyone in here wears prison-issue orange shorts. Built from capsules on a
    hand-made rig so they can be animated procedurally (no external models).
    ========================================================================== */
-const CAP=(r,l,c=6,s=10)=>new THREE.CapsuleGeometry(r,l,c,s);
-const sstep=(a,b,t)=>{const u=clamp((t-a)/(b-a),0,1);return u*u*(3-2*u);};
-
-/* Loft a smooth surface through a stack of elliptical rings.
-   This is what makes the bodies read as bodies — real limbs taper and bulge
-   along their length, and a capsule is the same thickness the whole way down. */
-function loft(rings,seg=16,cap=true){
-  const pos=[],idx=[],n=rings.length;
-  for(const r of rings) for(let j=0;j<=seg;j++){
-    const a=j/seg*Math.PI*2;
-    pos.push((r.cx||0)+Math.cos(a)*r.rx, r.y, (r.cz||0)+Math.sin(a)*r.rz);
-  }
-  for(let i=0;i<n-1;i++) for(let j=0;j<seg;j++){
-    const a=i*(seg+1)+j, b=a+seg+1;
-    idx.push(a,a+1,b, b,a+1,b+1);
-  }
-  /* Caps are flat discs. Where a limb or the neck passes straight through a
-     sleeve or waistband they show up as a hard shelf, so each end is optional:
-     true | false | 'top' | 'bottom'. */
-  if(cap===true||cap==='top'){
-    const ci=pos.length/3; pos.push(rings[0].cx||0,rings[0].y,rings[0].cz||0);
-    for(let j=0;j<seg;j++) idx.push(ci,j+1,j);
-  }
-  if(cap===true||cap==='bottom'){
-    const cb=pos.length/3, L=rings[n-1];
-    pos.push(L.cx||0,L.y,L.cz||0);
-    const off=(n-1)*(seg+1);
-    for(let j=0;j<seg;j++) idx.push(cb,off+j,off+j+1);
-  }
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  g.setIndex(idx); g.computeVertexNormals();
-  return g;
-}
-
-/* Push a unit sphere into the shape of a skull: tapered jaw, chin that comes
-   forward, brow ridge, fuller occiput, flatter temples. Used for the head and
-   again (very slightly larger) for the hair, so the hair sits on the skull. */
-function shapeHead(g,female,k=1){
-  const p=g.attributes.position, v=new THREE.Vector3();
-  // cute styling: a big round skull, roughly a quarter of body height
-  const RX=(female?.140:.145)*k, RY=(female?.150:.155)*k, RZ=(female?.140:.145)*k;
-  for(let i=0;i<p.count;i++){
-    v.fromBufferAttribute(p,i);
-    const ux=v.x,uy=v.y,uz=v.z;
-    const low=sstep(.12,-.92,uy);                  // 0 at the brow, 1 under the chin
-    const taper=1-(female?.16:.18)*low*low;          // soft chin, not a jaw
-    let X=ux*RX*taper, Y=uy*RY, Z=uz*RZ*taper;
-    if(uz>0) Z+=.006*low*sstep(0,.55,uz)*k;        // barely any chin
-    Z+=.002*sstep(.12,.50,uy)*sstep(.30,.92,uz)*(1-sstep(.55,.95,uy))*k;   // hint of brow
-    Z-=.006*sstep(-.25,-.95,uz)*k;                 // round at the back
-    X*=1-.02*sstep(.25,.95,Math.abs(ux));          // keep the cheeks round
-    Y-=.004*low*low*k;
-    p.setXYZ(i,X,Y,Z);
-  }
-  p.needsUpdate=true; g.computeVertexNormals(); return g;
-}
-
-/* Hair as a full shell around the skull, with the face "cut out" by pushing
-   those vertices back inside the head where the opaque skull hides them. That
-   gives a hairline that curves around the temples instead of a bowl-cut ring,
-   and lets the sides and back hang long without covering the face. */
-function hairGeo(female,o={}){
-  const g=new THREE.SphereGeometry(1,52,38);
-  const p=g.attributes.position, v=new THREE.Vector3();
-  const K=o.k??1.05, IN=.88;
-  const hl=o.hairline??.52;              // uy where the front hair stops
-  const fall=o.fall??0;                  // how far the sides/back hang down
-  const RX=(female?.140:.145), RY=(female?.150:.155), RZ=(female?.140:.145);
-  for(let i=0;i<p.count;i++){
-    v.fromBufferAttribute(p,i);
-    const ux=v.x,uy=v.y,uz=v.z;
-    const open=sstep(.22,.60,uz)*(1-sstep(hl-.16,hl+.14,uy));
-    const k=lerp(K,IN,open);
-    const low=sstep(.12,-.92,uy);
-    const taper=1-(female?.16:.18)*low*low;
-    let X=ux*RX*k*taper, Y=uy*RY*k, Z=uz*RZ*k*taper;
-    if(uz>0) Z+=.006*low*sstep(0,.55,uz)*k;
-    Z-=.006*sstep(-.25,-.95,uz)*k;
-    X*=1-.02*sstep(.25,.95,Math.abs(ux));
-    if(fall){
-      // draw the back and sides downward into a mass that clears the shoulders
-      const back=1-sstep(-.15,.55,uz), side=sstep(.34,.98,Math.abs(ux));
-      const m=Math.max(back,side*.55)*(1-sstep(.30,.80,uy))*(1-open);
-      const drop=m*(1-.45*side);            // sides sit shorter than the back
-      Y-=drop*fall;
-      X*=1+m*.07; Z*=1+m*.06;
-      Z-=drop*drop*.09;                     // ends curl in toward the neck
-      X*=1-drop*drop*.30;                   // and taper rather than hang square
-    }
-    p.setXYZ(i,X,Y,Z);
-  }
-  p.needsUpdate=true; g.computeVertexNormals(); return g;
-}
+/* Blocky characters: everything below is axis-aligned boxes. */
 
 function makeHuman(o={}){
   const female = !!o.female;
@@ -647,6 +566,8 @@ function makeHuman(o={}){
   const topM=new THREE.MeshStandardMaterial({color:top,roughness:.9});
   const hairM=new THREE.MeshStandardMaterial({color:hairC,roughness:.85});
   const darkM=new THREE.MeshStandardMaterial({color:0x22262b,roughness:.75});
+  const eyeW=new THREE.MeshStandardMaterial({color:0xf6f4f0,roughness:.25});
+  const lipM=new THREE.MeshStandardMaterial({color:female?0xc06a62:0xa55c52,roughness:.55});
 
   const root=new THREE.Group();
   const rig={};
@@ -658,143 +579,83 @@ function makeHuman(o={}){
     const g=new THREE.Group(); g.position.set(x,y,z); parent.add(g); return g;
   };
 
-  // proportions — roughly 7.5 heads tall, hip joint at 0.93m ----------------
-  // hipY set so the soles land on y=0:
-  //   hipY - .015 (hip joint) - .30 (thigh) - .29 (shin) - .056 (foot) = 0
-  const P = female
-    ? {hipY:.661, sh:.135, hipX:.078, neckY:.375, headY:.225}
-    : {hipY:.661, sh:.150, hipX:.076, neckY:.385, headY:.230};
+  /* Blocks. Everything is an axis-aligned box, sized so the soles land on y=0:
+       hipY - .015 (hip joint) - .28 (thigh) - .26 (shin) - .06 (foot) = 0
+     The rig joints are unchanged, so the existing animation still drives it. */
+  const P = {hipY:.615, sh:.235, hipX:.085, neckY:.44, headY:.23};
+  const BOX=(w,h,d)=>new THREE.BoxGeometry(w,h,d);
 
   rig.hips=grp(root,0,P.hipY,0);
   rig.torso=grp(rig.hips,0,0,0);
 
-  // torso — chest wide, waist drawn in, hips flaring back out ---------------
-  // the top rings close the torso into the neck, so the cap disc stays tiny
-  const torsoRings = female
-    ? [{y:.445,rx:.052,rz:.046},{y:.425,rx:.080,rz:.064},{y:.400,rx:.112,rz:.086},
-       {y:.360,rx:.140,rz:.100},{y:.290,rx:.142,rz:.104},
-       {y:.205,rx:.132,rz:.098},{y:.115,rx:.140,rz:.100},
-       {y:.030,rx:.152,rz:.107},{y:-.055,rx:.146,rz:.103},{y:-.10,rx:.132,rz:.095}]
-    : [{y:.455,rx:.054,rz:.048},{y:.435,rx:.084,rz:.066},{y:.408,rx:.118,rz:.090},
-       {y:.368,rx:.152,rz:.104},{y:.295,rx:.150,rz:.108},
-       {y:.205,rx:.138,rz:.100},{y:.115,rx:.140,rz:.100},
-       {y:.030,rx:.150,rz:.106},{y:-.055,rx:.145,rz:.102},{y:-.10,rx:.132,rz:.095}];
-  mk(loft(torsoRings,22),skinM,rig.torso,0,0,0);
-
-  if(female){
-    // vest top — the yoke runs up over the shoulders instead of separate straps
-    const topRings=[{y:.432,rx:.090,rz:.070},{y:.404,rx:.122,rz:.093},
-                    {y:.364,rx:.148,rz:.107},{y:.292,rx:.150,rz:.111},
-                    {y:.205,rx:.140,rz:.105},{y:.160,rx:.142,rz:.106}];
-    mk(loft(topRings,22,false),topM,rig.torso,0,0,0);
-  }
+  // torso ------------------------------------------------------------------
+  const TW=female?.335:.360, TD=female?.205:.220;
+  mk(BOX(TW,.54,TD),skinM,rig.torso,0,.17,0);
+  if(female) mk(BOX(TW+.018,.32,TD+.016),topM,rig.torso,0,.27,0);
 
   // neck + head ------------------------------------------------------------
   rig.neck=grp(rig.torso,0,P.neckY,0);
-  mk(loft([{y:.105,rx:.058,rz:.055},{y:.04,rx:.062,rz:.058},{y:-.03,rx:.070,rz:.064}],16),
-     skinM,rig.neck,0,0,0);
+  mk(BOX(.125,.075,.125),skinM,rig.neck,0,.035,0);
   rig.head=grp(rig.neck,0,P.headY,0);
-  mk(shapeHead(new THREE.SphereGeometry(1,30,22),female),skinM,rig.head,0,0,0);
+  const HS=female?.325:.340, HH=HS/2;
+  mk(BOX(HS,HS,HS),skinM,rig.head,0,0,0);
 
-  // face — depths are measured off the actual skull surface (z ~= .101 at the
-  // eye line), otherwise the features sit inside the head and vanish
-  const eyeW=new THREE.MeshStandardMaterial({color:0xf4f2ee,roughness:.18});
-  const iris=new THREE.MeshStandardMaterial({color:0x3d2a1a,roughness:.15});
-  const lipM=new THREE.MeshStandardMaterial({color:female?0xc06a62:0x9c5a52,roughness:female?.42:.55});
-  /* Big, simple and friendly: a dark almond eye with a bright catchlight reads
-     as "cute" far better than a modelled eyeball, socket and lash line do. */
-  const F=female?.97:1, EY=-.004, EX=.050*F, EZ=.126*F;
-  const ER=(female?.036:.034)*F;
+  // face — flat plates on the front of the head block -----------------------
+  const FZ=HH+.002;
+  const eyeD=new THREE.MeshStandardMaterial({color:0x241c16,roughness:.35});
+  const blushM=new THREE.MeshStandardMaterial({color:female?0xe0806f:0xd4796a,
+    roughness:.85,transparent:true,opacity:.42});
   for(const sx of[-1,1]){
-    const eye=mk(new THREE.SphereGeometry(ER,20,16),darkM,rig.head,sx*EX,EY,EZ);
-    eye.scale.set(.86,1,.42);
-    const shine=mk(new THREE.SphereGeometry(ER*.30,10,8),eyeW,
-      rig.head,sx*EX-sx*ER*.26,EY+ER*.34,EZ+ER*.24);
-    shine.scale.set(1,1,.5);
-    const glint=mk(new THREE.SphereGeometry(ER*.15,8,6),eyeW,
-      rig.head,sx*EX+sx*ER*.30,EY-ER*.30,EZ+ER*.22);
-    glint.scale.set(1,1,.5);
-    const brow=mk(new THREE.SphereGeometry(ER*.60,10,8),hairM,
-      rig.head,sx*EX,EY+ER*1.60,EZ-.006);
-    brow.scale.set(1.15,.20,.28); brow.rotation.z=sx*(female?.16:.10);
+    mk(BOX(.072,.092,.010),eyeD,rig.head,sx*.078,.028,FZ);
+    mk(BOX(.026,.030,.010),eyeW,rig.head,sx*.092,.056,FZ+.004);
+    mk(BOX(.016,.018,.010),eyeW,rig.head,sx*.062,.006,FZ+.004);
+    mk(BOX(.052,.030,.008),blushM,rig.head,sx*.122,-.028,FZ);
+    mk(BOX(.062,.026,.010),hairM,rig.head,sx*.078,.090,FZ);          // brow
+    mk(BOX(.028,.090,.055),skinM,rig.head,sx*(HH+.012),-.005,-.010); // ear
   }
-  // a button nose and a small smile, nothing more
-  const nose=mk(new THREE.SphereGeometry(.0155*F,12,10),skinM,rig.head,0,-.046,.137*F);
-  nose.scale.set(1,.82,.72);
-  const smile=mk(new THREE.TorusGeometry(.030*F,.0062,8,16,Math.PI*.85),
-    lipM,rig.head,0,-.060,.129*F);
-  smile.rotation.z=Math.PI*1.075;
-  for(const sx of[-1,1]){
-    const cheek=mk(new THREE.SphereGeometry(.026*F,12,10),
-      new THREE.MeshStandardMaterial({color:female?0xe0806f:0xd4796a,
-        roughness:.85,transparent:true,opacity:.32}),
-      rig.head,sx*.090*F,-.032,.112*F);
-    cheek.scale.set(1.1,.72,.34);
-    const ear=mk(new THREE.SphereGeometry(.032*F,12,12),skinM,rig.head,sx*.133*F,-.004,-.004);
-    ear.scale.set(.36,.92,.72); ear.rotation.y=sx*.24;
-  }
+  mk(BOX(.030,.026,.012),skinM,rig.head,0,-.020,FZ+.004);            // nose
+  mk(BOX(.060,.020,.010),lipM,rig.head,0,-.072,FZ);                  // mouth
 
-  // hair -------------------------------------------------------------------
+  // hair — slabs clipped to the head block ---------------------------------
+  mk(BOX(HS+.016,.070,HS+.016),hairM,rig.head,0,HH+.020,0);
+  mk(BOX(HS+.016,.085,.052),hairM,rig.head,0,HH-.052,HH-.006);
+  mk(BOX(HS+.016,female?.28:.16,.055),hairM,rig.head,0,
+     female?HH-.150:HH-.090,-(HH-.006));
   if(female){
-    // long hair: a shell that hangs past the jaw, framing the face
-    mk(hairGeo(true,{hairline:.44,fall:.26,k:1.05}),hairM,rig.head,0,.004,-.002);
-    // the mass that falls down the back, on its own joint so it swings
-    rig.pony=grp(rig.head,0,-.03,-.085);
-    mk(loft([{y:.05,rx:.110,rz:.080},{y:-.07,rx:.124,rz:.088},
-             {y:-.20,rx:.118,rz:.082},{y:-.31,rx:.096,rz:.066},
-             {y:-.39,rx:.060,rz:.042},{y:-.44,rx:.026,rz:.020}],20,false),
-       hairM,rig.pony,0,0,-.010);
-  }else{
-    mk(hairGeo(false,{hairline:.48,fall:.05,k:1.045}),hairM,rig.head,0,.005,-.002);
+    for(const sx of[-1,1])
+      mk(BOX(.055,.34,HS+.010),hairM,rig.head,sx*(HH+.012),-.055,-.012);
+    rig.pony=grp(rig.head,0,-.02,-(HH+.045));
+    mk(BOX(.135,.26,.115),hairM,rig.pony,0,-.12,0);
+    mk(BOX(.105,.12,.095),hairM,rig.pony,0,-.30,-.010);
+    mk(BOX(.150,.045,.130),darkM,rig.pony,0,.012,0);                 // tie
   }
 
   // arms -------------------------------------------------------------------
   rig.arm={};
+  const AW=female?.100:.110;
   for(const side of['L','R']){
     const sx=side==='L'?-1:1;
-    const sh=grp(rig.torso,sx*P.sh,.365,0);
-    const A=female?.92:1;
-    // a sphere at each joint so the segments never show a seam when they bend
-    const ball=mk(new THREE.SphereGeometry(.058*A,14,12),skinM,sh,0,.004,0);
-    // short rounded upper arm
-    mk(loft([{y:.045,rx:.056*A,rz:.055*A},{y:-.02,rx:.058*A,rz:.056*A},
-             {y:-.12,rx:.052*A,rz:.050*A},{y:-.21,rx:.048*A,rz:.046*A}],18),skinM,sh,0,0,0);
-    const elbow=grp(sh,0,-.21,0);
-    mk(new THREE.SphereGeometry(.046*A,12,10),skinM,elbow,0,0,0);
-    mk(loft([{y:.02,rx:.046*A,rz:.045*A},{y:-.06,rx:.047*A,rz:.045*A},
-             {y:-.17,rx:.042*A,rz:.040*A}],18),skinM,elbow,0,0,0);
-    // a simple round mitt reads friendlier than fingers at this size
-    const hand=mk(new THREE.SphereGeometry(.052*A,14,12),skinM,elbow,0,-.215,0);
-    hand.scale.set(1,1.05,.85);
+    const sh=grp(rig.torso,sx*(TW/2+AW/2+.002),.38,0);
+    mk(BOX(AW,.24,AW),skinM,sh,0,-.12,0);
+    const elbow=grp(sh,0,-.24,0);
+    mk(BOX(AW*.92,.22,AW*.92),skinM,elbow,0,-.11,0);
+    mk(BOX(AW*1.15,.115,AW*1.15),skinM,elbow,0,-.275,0);             // mitt
     rig.arm[side]={sh,elbow};
   }
 
   // legs -------------------------------------------------------------------
   rig.leg={};
-  // prison-issue shorts: one waistband that clearly sits outside the hips,
-  // with legs that start high enough to merge into it
-  mk(loft([{y:.085,rx:.146,rz:.104},{y:.02,rx:.170,rz:.118},
-           {y:-.03,rx:.184,rz:.124},{y:-.075,rx:.188,rz:.124},
-           {y:-.115,rx:.178,rz:.118}],24,'top'),
-     clothM,rig.hips,0,0,0);
+  mk(BOX(TW+.030,.225,TD+.030),clothM,rig.hips,0,-.020,0);           // shorts
+  const LW=female?.128:.135;
   for(const side of['L','R']){
     const sx=side==='L'?-1:1;
     const hip=grp(rig.hips,sx*P.hipX,-.015,0);
-    const T=female?1.02:1;
-    mk(loft([{y:.02,rx:.090*T,rz:.088*T},{y:-.09,rx:.086*T,rz:.084*T},
-             {y:-.21,rx:.076*T,rz:.074*T},{y:-.30,rx:.070*T,rz:.068*T}],18),
-       skinM,hip,0,0,0);
-    mk(loft([{y:.085,rx:.104*T,rz:.101*T},{y:-.01,rx:.100*T,rz:.097*T},
-             {y:-.11,rx:.094*T,rz:.091*T},{y:-.145,rx:.080*T,rz:.078*T}],18,false),
-       clothM,hip,0,0,0);
-    const knee=grp(hip,0,-.30,0);
-    mk(new THREE.SphereGeometry(.062*T,14,12),skinM,knee,0,.004,0);
-    mk(loft([{y:.02,rx:.066*T,rz:.065*T},{y:-.08,rx:.068*T,rz:.068*T},
-             {y:-.20,rx:.058*T,rz:.056*T},{y:-.29,rx:.052*T,rz:.050*T}],18),
-       skinM,knee,0,0,0);
-    const ankle=grp(knee,0,-.29,0);
-    const foot=mk(new THREE.SphereGeometry(1,14,12),skinM,ankle,0,-.020,.022);
-    foot.scale.set(.055,.036,.086);
+    mk(BOX(LW,.28,LW),skinM,hip,0,-.14,0);
+    mk(BOX(LW+.022,.165,LW+.022),clothM,hip,0,-.075,0);
+    const knee=grp(hip,0,-.28,0);
+    mk(BOX(LW*.90,.26,LW*.90),skinM,knee,0,-.13,0);
+    const ankle=grp(knee,0,-.26,0);
+    mk(BOX(LW+.006,.062,.185),darkM,ankle,0,-.031,.022);             // foot
     rig.leg[side]={hip,knee,ankle};
   }
 
@@ -1949,27 +1810,20 @@ class Guard extends Ent{
     this.model=h; this.obj=h.root; this.obj.position.copy(this.path[0]);
     // uniform bits so guards read as guards, not prisoners
     const navy=new THREE.MeshStandardMaterial({color:0x1e2b3d,roughness:.8});
+    const BX=(w,hh,d)=>new THREE.BoxGeometry(w,hh,d);
     const add=(geo,mat,parent,x=0,y=0,z=0)=>{
       const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
       m.castShadow=m.receiveShadow=true; parent.add(m); return m;
     };
-    // uniform shirt over the torso
-    add(loft([{y:.458,rx:.062,rz:.055},{y:.438,rx:.092,rz:.073},
-              {y:.410,rx:.126,rz:.097},{y:.370,rx:.160,rz:.111},
-              {y:.298,rx:.158,rz:.115},{y:.208,rx:.146,rz:.107},
-              {y:.115,rx:.148,rz:.107},{y:.030,rx:.158,rz:.113}],22,false),
-        navy,h.rig.torso);
-    const belt=add(new THREE.TorusGeometry(.150,.024,8,18),MAT.dark,h.rig.torso,0,.05,0);
-    belt.rotation.x=Math.PI/2; belt.scale.set(1,.70,1);
-    // peaked cap, shaped off the same skull curve so it actually sits down
-    add(shapeHead(new THREE.SphereGeometry(1,22,14,0,Math.PI*2,0,Math.PI*.48),
-        !!o.female,1.09),navy,h.rig.head,0,.010,-.004);
-    const brim=add(new THREE.SphereGeometry(1,14,8,0,Math.PI,0,Math.PI*.5),
-      navy,h.rig.head,0,.050,.040);
-    brim.scale.set(.150,.020,.170); brim.rotation.y=Math.PI;
+    const TW=o.female?.335:.360, TD=o.female?.205:.220;
+    add(BX(TW+.020,.40,TD+.018),navy,h.rig.torso,0,.24,0);            // tunic
+    add(BX(TW+.034,.055,TD+.030),MAT.dark,h.rig.torso,0,.02,0);       // belt
+    const HS=o.female?.325:.340, HH=HS/2;
+    add(BX(HS+.022,.080,HS+.022),navy,h.rig.head,0,HH+.026,0);        // cap
+    add(BX(HS+.022,.026,.095),navy,h.rig.head,0,HH-.004,HH+.046);     // brim
     for(const s of['L','R']){
-      add(loft([{y:.05,rx:.062,rz:.060},{y:-.02,rx:.064,rz:.062},
-                {y:-.12,rx:.058,rz:.056}],16,false),navy,h.rig.arm[s].sh);
+      const AW=o.female?.100:.110;
+      add(BX(AW+.018,.20,AW+.018),navy,h.rig.arm[s].sh,0,-.10,0);     // sleeve
     }
     G.scene.add(this.obj);
     // torchlight + visible cone
@@ -2572,16 +2426,108 @@ function genBuild(mi,ki){
   }
 }
 
+
+/* ----------------------------------------------------------------------------
+   Hand-built levels that take over a slot in a generated wing.
+   -------------------------------------------------------------------------- */
+const SPECIALS={
+'4_4':{
+  name:'THE TORTURE CHAMBER', sub:'Punishment block · nobody signs the log',
+  amb:{fog:0x0a0605,far:34,hemi:.13,sun:.10,sunPos:[-10,20,-6]},
+  build(){
+    B.spawn(-13,.15,0);
+    B.fl(-16,30,-11,11,0,MAT.concrete);
+    B.ceil(-16,30,-11,11,5.6,MAT.concrete);
+    B.wx(-16,30,-11,0,5.6,MAT.wall); B.wx(-16,30,11,0,5.6,MAT.wall);
+    B.wz(-11,11,-16,0,5.6,MAT.wall);
+    B.wz(-11,-2.6,30,0,5.6,MAT.wall); B.wz(2.6,11,30,0,5.6,MAT.wall);
+    for(let x=-12;x<28;x+=7) B.ent(new Lamp(x,4.9,0,{i:1.2,dist:13,color:0xffb07a,flicker:true}));
+    B.ent(new Lamp(6,3.0,0,{i:1.0,dist:8,color:0xff6a4a}));
+
+    // restraint frames: an upright post with cuffs, one prisoner held at each
+    const frame=(x,z,rot)=>{
+      B.solid(x,1.4,z,.22,2.8,.22,MAT.rust,{rot});
+      B.solid(x,2.55,z,1.5,.16,.16,MAT.rust,{rot,solid:false});
+      for(const sx of[-1,1]){
+        const c=Math.cos(rot),s2=Math.sin(rot);
+        const ox=sx*.62*c, oz=-sx*.62*s2;
+        const cuff=new THREE.Mesh(new THREE.TorusGeometry(.075,.022,7,14),MAT.bar);
+        cuff.position.set(x+ox,2.42,z+oz); cuff.rotation.x=Math.PI/2;
+        cuff.castShadow=true; G.scene.add(cuff);
+      }
+    };
+    const held=[
+      [-6,-6, .5,'MERCY',  true, 4,2,'ch_a',
+        ['You are not one of them. You have not got the boots.',
+         'They keep me here between shifts. It is a room for making people agree with things.',
+         'The release for these frames is a lever on the north wall — they put it where we can all see it.',
+         'Pull it. Do not stand there deciding.']],
+      [ 2, 6,-2.5,'ANVIL', false,5,0,'ch_b',
+        ['Ha. A new face. Are you lost, or are you leaving?',
+         'Leaving. Good. Then listen — the door at the end is on a card, and the card is in the officers’ locker up the step.',
+         'They took my name off the roll two years ago. As far as the paperwork goes I already left.']],
+      [12,-6, 1.2,'SPARROW II',true,1,3,'ch_c',
+        ['Water. No. Sorry. Force of habit.',
+         'You want the yellow card. Top of the lockers, past the frames.',
+         'When the lever goes the cuffs all drop at once. It is the only decent thing in this room.']],
+      [18, 5,-2.0,'OLD TOM',false,3,6,'ch_d',
+        ['Forty-one years. I have seen four wardens and one honest guard.',
+         'Go. And when you are over that wall, tell them what this room is for.',
+         'They will not believe you. Tell them anyway.']]
+    ];
+    for(const[x,z,rot,name,fem,sk,hr,ch,lines] of held){
+      frame(x,z,rot);
+      B.ent(new NPC(x,0,z+(z<0?.55:-.55),{name,female:fem,skin:sk,hair:hr,
+        rot:rot+(z<0?0:Math.PI), ch, lines,
+        after:['Go on. Get out of this room.']}));
+    }
+
+    // the release lever, in plain sight on the north wall
+    B.ent(new Lever(4,1.4,-10.55,'cuffs',{kind:'lever',label:'RELEASE THE FRAMES'}));
+    B.ent(new Sign(-2,1.6,-10.55,
+      ['A brass plate, polished by somebody who cared:',
+       '"RESTRAINT BANK — MASTER RELEASE"',
+       'Underneath, scratched deep: "PULL IT AND RUN"'],{label:'PLATE',ch:'readPlate'}));
+
+    // officers' lockers on a step, holding the card
+    B.solid(24,.55,-7,5,1.1,3,MAT.metal);
+    B.solid(24,1.9,-8.2,5,1.6,.6,MAT.metal);
+    B.ent(new Pickup(24,1.5,-6.2,{key:'card_yellow',label:'YELLOW KEYCARD',kind:'card',
+      color:CARD_COL.yellow}));
+    B.ent(new Lamp(24,3.4,-7,{i:1.1,dist:8,color:0xffd24d}));
+
+    // a guard doing rounds, and cover to wait behind
+    B.ent(new Guard([[-8,8],[20,8],[20,-2],[-8,-2]],{speed:1.9,pause:1.4,range:12,fov:.5}));
+    for(const[cx,cz] of [[-2,2],[8,-2],[16,2],[6,8]])
+      B.ent(new Crate(cx,0,cz,{s:1.2,metal:true}));
+
+    B.ent(new Checkpoint(-8,0,0));
+    B.ent(new Checkpoint(16,0,0,'cp2'));
+    B.ent(new Reader(29.5,1.5,-3.2,'yellow','tortureDoor',{rot:-Math.PI/2}));
+    B.ent(new Exit(29.4,0,0,['tortureDoor','cuffs'],{rot:Math.PI/2}));
+
+    B.task('Talk to the four held here',['ch_a','ch_b','ch_c','ch_d']);
+    B.task('Release the restraint frames','cuffs');
+    B.task('Take the yellow card from the lockers','got_card_yellow');
+    B.task('Swipe out through the far door','tortureDoor');
+  }}
+};
+
 function genDescriptors(){
   const out=[];
   for(let m=1;m<MODULES.length;m++){
     const mod=MODULES[m];
-    for(let k=0;k<10;k++) out.push({
-      name:(mod.names[k]||('Sector '+(k+1))).toUpperCase(),
-      sub:mod.name.replace(/^THE /,'')+' · '+(k+1)+' of 10',
-      module:m, idx:k, amb:mod.amb,
-      build(){ genBuild(m,k); }
-    });
+    for(let k=0;k<10;k++){
+      const sp=SPECIALS[m+'_'+k];
+      if(sp){ out.push({name:sp.name, sub:sp.sub, module:m, idx:k,
+                        amb:sp.amb, build:sp.build}); continue; }
+      out.push({
+        name:(mod.names[k]||('Sector '+(k+1))).toUpperCase(),
+        sub:mod.name.replace(/^THE /,'')+' · '+(k+1)+' of 10',
+        module:m, idx:k, amb:mod.amb,
+        build(){ genBuild(m,k); }
+      });
+    }
   }
   return out;
 }
@@ -3476,6 +3422,11 @@ let locked=false;
 addEventListener('keydown',e=>{
   if(e.repeat){ K[e.code]=true; return; }
   K[e.code]=true;
+  const dig=/^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+  if(dig){
+    codeBuf=(codeBuf+dig[1]).slice(-UNLOCK_CODE.length);
+    if(codeBuf===UNLOCK_CODE){ codeBuf=''; redeemCode(UNLOCK_CODE); }
+  }
   if(e.code==='Escape'||e.code==='KeyP'){
     if(state==='play') pause(); else if(state==='pause') resume();
   }
@@ -3807,6 +3758,27 @@ function renderPreview(t,dt){
   pRen.render(pScene,pCam);
 }
 
+/* ---- unlock code ---------------------------------------------------------
+   Typing the digits anywhere outside of play also works, the way these
+   always used to. */
+const UNLOCK_CODE='951413';
+let codeBuf='';
+function redeemCode(str){
+  if(String(str).replace(/\D/g,'')!==UNLOCK_CODE) return false;
+  PROG.unlocked=LEVELS.length; saveProg();
+  if(screens.levels.classList.contains('on')) buildLevelGrid();
+  $('bPlay').textContent='Continue';
+  sfx('unlock'); toast('ALL WINGS UNLOCKED','All '+LEVELS.length+' levels are open');
+  return true;
+}
+function submitCode(){
+  const el=$('oCode'), ok=redeemCode(el.value);
+  el.classList.remove('bad','good'); void el.offsetWidth;
+  el.classList.add(ok?'good':'bad');
+  $('oCodeH').textContent = ok ? 'Every wing is open' : 'That code does nothing';
+  if(ok) el.value='';
+}
+
 /* ---- level select ---- */
 function buildLevelGrid(){
   let html='';
@@ -3857,6 +3829,9 @@ $('bWipe').onclick=()=>{
   PROG={unlocked:1,done:[],best:{}}; saveProg();
   toast('Progress reset','');
 };
+$('bCode').onclick=submitCode;
+$('oCode').addEventListener('keydown',e=>{ e.stopPropagation();
+  if(e.code==='Enter') submitCode(); });
 $('cSound').onclick=toggleSound;
 $('cView').onclick=toggleView;
 $('cPause').onclick=()=>{ if(state==='play') pause(); };
