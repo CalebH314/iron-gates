@@ -2372,17 +2372,25 @@ const MODULES=[
 /* ---- assemble one generated level ----------------------------------------- */
 function genBuild(mi,ki){
   const mod=MODULES[mi];
+  const gi=(mi-1)*10+ki;                           // 0..89 across generated wings
+  const gd=clamp(gi/89,0,1);                       // global difficulty ramp
   const rng=rngFrom(mi*7919 + ki*104729 + 13);
-  const hard=1 + Math.floor(ki/4);                 // 1..3 across the module
-  const n=3 + Math.floor(ki/2);                    // 3..7 chambers
+  const hard=1+Math.min(3,Math.floor(gd*3.8));     // 1..4, rises across the game
+  const n=Math.min(7,3+Math.round(gd*3)+(ki%2));   // 3..7 chambers
+  /* Structure varies per level so wings stop feeling like one repeated room:
+       doors   — sequential, each chamber unlocks the next
+       open    — no inner doors, roam the whole hall and solve in any order
+       reverse — you start at the far end and work back toward the entrance  */
+  const shape=['doors','open','reverse'][(mi*5+ki*11)%3];
   const MF=MAT[mod.mats.floor]||MAT.floor, MW=MAT[mod.mats.wall]||MAT.wall,
         MC=MAT[mod.mats.ceil]||MAT.concrete;
   const endX=(n-1)*CSPAN+CW;
 
   const R={
-    B, theme:mod,
-    floorAll(c){ B.fl(c.x0-1,c.x1+1,c.z0,c.z1,0,MF); },
+    B, theme:mod, noFloor:false,
+    floorAll(c){ if(R.noFloor) return; B.fl(c.x0-1,c.x1+1,c.z0,c.z1,0,MF); },
     floorExcept(c,px0,px1){
+      if(R.noFloor) return;
       B.fl(c.x0-1,px0,c.z0,c.z1,0,MF);
       B.fl(px1,c.x1+1,c.z0,c.z1,0,MF);
     },
@@ -2394,38 +2402,118 @@ function genBuild(mi,ki){
       ['Stencilled on the wall:','"'+txt+'"'],{label:'NOTICE'})); }
   };
 
-  B.spawn(2.5,.15,0);
   // shell
   B.ceil(-3,endX+3,-CD/2,CD/2,CHH,MC);
   B.wx(-3,endX+3,-CD/2,0,CHH,MW); B.wx(-3,endX+3,CD/2,0,CHH,MW);
-  B.wz(-CD/2,CD/2,-3,0,CHH,MW);
-  B.wz(-CD/2,-2.4,endX+2,0,CHH,MW); B.wz(2.4,CD/2,endX+2,0,CHH,MW);
+  if(shape==='reverse'){
+    B.wz(-CD/2,-2.4,-3,0,CHH,MW); B.wz(2.4,CD/2,-3,0,CHH,MW);
+    B.wz(-CD/2,CD/2,endX+2,0,CHH,MW);
+    B.spawn(endX-2.5,.15,0);
+  }else{
+    B.wz(-CD/2,CD/2,-3,0,CHH,MW);
+    B.wz(-CD/2,-2.4,endX+2,0,CHH,MW); B.wz(2.4,CD/2,endX+2,0,CHH,MW);
+    B.spawn(2.5,.15,0);
+  }
 
   const keys=Object.keys(CHAMBERS).filter(k=>mod.kit.includes(k));
+  const PITTY={jump:1,movers:1,vent:1};            // these carve the floor away
+  const all=[];
   let prev=null;
   for(let i=0;i<n;i++){
     const c=chamberAt(i), id='c'+i+'_';
-    // pick a challenge, avoiding an immediate repeat
     let kind=pick(rng,keys), guard=0;
     while(kind===prev&&keys.length>1&&guard++<8) kind=pick(rng,keys);
     prev=kind;
-    const req=CHAMBERS[kind](R,c,id,rng,hard);
+    let req=CHAMBERS[kind](R,c,id,rng,hard);
+    // deeper in, chambers carry two problems at once rather than one
+    if(hard>=3 && !PITTY[kind] && rng()<.62){
+      const second=keys.filter(k=>k!==kind && !PITTY[k]);
+      if(second.length){
+        const k2=pick(rng,second);
+        R.noFloor=true;                            // the floor is already down
+        const r2=CHAMBERS[k2](R,c,id+'x',rng,hard-1);
+        R.noFloor=false;
+        req=[].concat(req,r2);
+      }
+    }
+    all.push.apply(all,[].concat(req));
     B.ent(new Lamp(c.cx,CHH-1.1,0,{i:1.6,dist:15,color:mod.accent}));
     B.ent(new Lamp(c.cx,CHH-1.4,c.z0+3,{i:.9,dist:11}));
-    if(i>0) B.ent(new Checkpoint(c.x0+1.5,0,0));
+    B.ent(new Checkpoint(c.x0+1.5,0,0));
+
     if(i<n-1){
       const wx=c.x1+CGAP/2;
-      B.wz(-CD/2,-1.5,wx,0,CHH,MW,CGAP);
-      B.wz(1.5,CD/2,wx,0,CHH,MW,CGAP);
-      B.ent(new Door(wx,0,0,3.0,3.8,CGAP*.9,req,{mode:'up',rot:Math.PI/2}));
-      B.task('Chamber '+(i+1)+' — open the way through',req);
-    }else{
-      B.ent(new Exit(endX+1.4,0,0,req,{rot:Math.PI/2}));
-      B.task('Reach the far door',req);
+      if(shape==='open'){
+        // no door: a wide opening, and the exit wants everything instead
+        B.wz(-CD/2,-3.4,wx,0,CHH,MW,CGAP);
+        B.wz(3.4,CD/2,wx,0,CHH,MW,CGAP);
+      }else{
+        B.wz(-CD/2,-1.5,wx,0,CHH,MW,CGAP);
+        B.wz(1.5,CD/2,wx,0,CHH,MW,CGAP);
+        // reverse levels are walked right to left, so each door answers to the
+        // chamber on its far side
+        const gateReq = shape==='reverse' ? 'PENDING'+i : req;
+        B.ent(new Door(wx,0,0,3.0,3.8,CGAP*.9,gateReq,{mode:'up',rot:Math.PI/2}));
+        if(shape!=='reverse') B.task('Chamber '+(i+1)+' — open the way through',req);
+      }
     }
   }
-}
 
+  // reverse: re-point each door at the chamber behind it, then place the exit
+  // back at the entrance
+  if(shape==='reverse'){
+    const doors=G.ents.filter(e=>e.constructor.name==='Door');
+    const perCh=[]; let idx=0;
+    for(let i=0;i<n;i++) perCh.push(null);
+    // rebuild the per-chamber requirement list in order
+    let cursor=0;
+    for(let i=0;i<n;i++){
+      // each chamber contributed a contiguous slice of `all`; recover it by id
+      perCh[i]=all.filter(ch=>typeof ch==='string'&&ch.indexOf('c'+i+'_')===0);
+    }
+    doors.forEach((d,i)=>{ d.req=perCh[i+1]&&perCh[i+1].length?perCh[i+1]:perCh[i]; });
+    for(let i=n-1;i>0;i--)
+      B.task('Chamber '+(i+1)+' — open the way back',perCh[i]);
+    B.ent(new Exit(-1.4,0,0,perCh[0],{rot:-Math.PI/2}));
+    B.task('Reach the entrance door',perCh[0]);
+  }else if(shape==='open'){
+    B.ent(new Exit(endX+1.4,0,0,all,{rot:Math.PI/2}));
+    B.task('Solve every chamber in the hall',all);
+    B.task('Reach the far door',all);
+  }else{
+    const last=all.filter(ch=>typeof ch==='string'&&ch.indexOf('c'+(n-1)+'_')===0);
+    B.ent(new Exit(endX+1.4,0,0,last.length?last:all,{rot:Math.PI/2}));
+    B.task('Reach the far door',last.length?last:all);
+  }
+
+  /* ---- pressure that scales with how deep you are ------------------------ */
+  if(gd>.22){
+    const ci=1+Math.floor(rng()*Math.max(1,n-1)), c=chamberAt(ci);
+    B.ent(new Guard([[c.x0+3,-4],[c.x1-3,-4],[c.x1-3,4],[c.x0+3,4]],
+      {speed:1.8+gd*.9, pause:1.4-gd*.5, range:10+gd*4, fov:.44+gd*.10,
+       female:rng()<.5, skin:(rng()*6)|0, hair:(rng()*7)|0}));
+  }
+  if(gd>.62){
+    const ci=1+Math.floor(rng()*Math.max(1,n-1)), c=chamberAt(ci);
+    B.ent(new Guard([[c.x1-3,3],[c.x0+3,3]],
+      {speed:2.0+gd*.8, pause:1.0, range:11+gd*4, fov:.46,
+       female:rng()<.5, skin:(rng()*6)|0, hair:(rng()*7)|0}));
+  }
+  if(gd>.45){
+    // beams strung across the connecting doorways
+    for(let i=0;i<n-1;i++){
+      if(rng()<.55) continue;
+      const wx=chamberAt(i).x1+CGAP/2;
+      B.ent(new Hazard(wx,1.4,0,.07,2.8,4.6,
+        {kind:'laser',blink:[1.1+ (1-gd), 1.6+(1-gd)*1.2, rng()*2],
+         reason:'Broke a beam in the doorway'}));
+    }
+  }
+  if(gd>.80){
+    const c=chamberAt(Math.max(0,n-2));
+    B.ent(new Spot(c.cx,0,{y:CHH-.6,r:5.5,rad:2.4,speed:.5+gd*.4,phase:rng()*6,gy:0}));
+  }
+}
 
 /* ----------------------------------------------------------------------------
    Hand-built levels that take over a slot in a generated wing.
@@ -3258,9 +3346,146 @@ build(){
   B.task('Load the counterweight pad','gateWeight');
 }}
 ];
-/* ten hand-built levels, then nine generated wings of ten */
-const LEVELS=HANDMADE.concat(genDescriptors());
-const moduleOf=i=>i<10?0:Math.floor(i/10);
+
+/* ============================================================================
+   LEVEL 101 — THE LONG NIGHT
+   Everything the game has, in one map, all of it required.
+   ========================================================================== */
+const FINALE={
+name:'THE LONG NIGHT', sub:'Level 101 · one night, every lock',
+amb:{fog:0x080b12,far:90,hemi:.17,sun:.20,sunPos:[24,38,-18],night:true},
+build(){
+  const CONC=MAT.concrete, W=MAT.wall, MT=MAT.metal;
+  B.spawn(-42,.15,0);
+  B.fl(-46,48,-22,22,0,CONC);
+  B.ceil(-46,48,-22,22,9.5,CONC);
+  B.wx(-46,48,-22,0,9.5,W); B.wx(-46,48,22,0,9.5,W);
+  B.wz(-22,22,-46,0,9.5,W);
+  B.wz(-22,-2.6,48,0,9.5,W); B.wz(2.6,22,48,0,9.5,W);
+  // zone divisions, each with a doorway
+  for(const x of [-26,-6,14,32]){
+    B.wz(-22,-1.7,x,0,9.5,W); B.wz(1.7,22,x,0,9.5,W);
+  }
+  for(let x=-42;x<46;x+=8) B.ent(new Lamp(x,8.4,0,{i:1.5,dist:20}));
+
+  /* ---- A · RECEIVING ---------------------------------------------------- */
+  B.ent(new NPC(-42,0,5.5,{name:'FIXER',skin:3,hair:1,rot:-1.2,ch:'metFixer',
+    lines:['You picked the one night the whole block is short-staffed. Good. That is the only luck you get.',
+      'There are three cards and three breakers between you and that gate, and the gate wants all of it at once.',
+      'Receiving first: the inner door is weight-held, same as everything else in this place.',
+      'Then the cages. Three of ours are still locked in. You do not leave them.',
+      'After that it is the hall, the pump room and the gate. Do not stop moving.']}));
+  B.ent(new Plate(-32,0,-6,'wA',{w:1.8,crate:true,latch:true}));
+  B.ent(new Crate(-38,0,-6,{s:1.25,metal:true}));
+  B.ent(new Sign(-45.5,1.7,4,['Receiving log, last entry three weeks old:',
+    '"INNER DOOR — WEIGHT HELD. LOAD THE PAD."'],{label:'LOG',rot:Math.PI/2,ch:'readLog'}));
+  B.ent(new Door(-26,0,0,3.4,4.2,.24,'wA',{mode:'up',rot:Math.PI/2}));
+  B.ent(new Checkpoint(-40,0,0));
+
+  /* ---- B · THE CAGES ---------------------------------------------------- */
+  const caged=[[-21,'BADGER',false,4,0,'f0'],[-16,'WREN',true,1,3,'f1'],
+               [-11,'PIKE',false,5,6,'f2']];
+  for(const[cx,nm,fem,sk,hr,ch] of caged){
+    B.wz(-22,-15,cx-2.4,0,4.6,W); B.wz(-22,-15,cx+2.4,0,4.6,W);
+    B.grill(cx-2.4,cx+2.4,-15,0,4.6);
+    B.ceil(cx-2.4,cx+2.4,-22,-15,4.6,CONC);
+    B.ent(new NPC(cx,0,-18,{name:nm,female:fem,skin:sk,hair:hr,rot:0,ch:'met_'+ch,
+      lines:['Is that a key in your hand or are you just passing through?',
+        'The release bank is on the south wall. Three handles, one for each of us.',
+        'Throw all three. They only read as open when the bank is complete.']}));
+    B.ent(new Lamp(cx,4.2,-18,{i:1.0,dist:7,color:0xffb07a,flicker:true}));
+  }
+  caged.forEach(([cx,nm,f,sk,hr,ch],i)=>
+    B.ent(new Lever(-21+i*5,1.4,21.5,ch,{kind:'lever',rot:Math.PI,
+      label:'RELEASE CAGE '+(i+1)})));
+  // blue card, behind a beam run on a two-step ledge
+  B.plat(-9,1.3,12,3.2,3.2,MT); B.plat(-12,2.6,15,3.2,3.2,MT);
+  B.ent(new Pickup(-12,3.2,15,{key:'card_blue',label:'BLUE KEYCARD',kind:'card',
+    color:CARD_COL.blue}));
+  for(let i=0;i<3;i++)
+    B.ent(new Hazard(-20+i*4,1.5,12,.07,3,8,{kind:'laser',blink:[1.3,1.8,i*.75],
+      reason:'Broke a beam in the cages'}));
+  B.ent(new Guard([[-24,8],[-9,8],[-9,-8],[-24,-8]],{speed:2.1,pause:1.1,range:12,fov:.5}));
+  B.ent(new Door(-6,0,0,3.4,4.2,.24,['f0','f1','f2'],{mode:'up',rot:Math.PI/2}));
+  B.ent(new Checkpoint(-23,0,4));
+
+  /* ---- C · CENTRAL HALL ------------------------------------------------- */
+  B.ent(new Hazard(4,-7,0,10,12,20,{kind:'pit',color:0x05060a,
+    reason:'Went into the hall pit'}));
+  B.fl(-6,-1,-22,22,0,CONC); B.fl(9,14,-22,22,0,CONC);
+  B.fl(-1,9,-22,-10,0,CONC); B.fl(-1,9,10,22,0,CONC);
+  B.ent(new Mover(1.5,1.2,-6,3.2,3.2,[1.5,1.2,6],{speed:1.9,mode:'ping',wait:1.2}));
+  B.ent(new Mover(6.5,2.0,6,3.2,3.2,[6.5,2.0,-6],{speed:1.7,mode:'ping',wait:1.2}));
+  // catwalk with the first breaker
+  B.plat(4,4.8,-14,16,3,MAT.grate); B.rail(-4,12,-12.6,4.8,'x');
+  B.ent(new Ladder(-3.4,0,-13,5.4,{rot:Math.PI/2}));
+  B.ent(new Lever(10,5.5,-15.4,'brk1',{kind:'breaker',label:'THROW HALL BREAKER'}));
+  // the interlock
+  seqDef('finale',[1,3,0,2],'seqOpen');
+  ['A','B','C','D'].forEach((l,i)=>
+    B.ent(new Button(-4+i*2.2,1.5,21.5,{group:'finale',idx:i,label:l,rot:Math.PI})));
+  B.ent(new Sign(8,1.7,21.5,['Taped inside a cupboard door:',
+    '"HALL INTERLOCK:  B — D — A — C"'],{label:'CARD',rot:Math.PI,ch:'readSeq'}));
+  B.ent(new Spot(4,0,{y:8.6,r:7,rad:2.8,speed:.55,phase:1.4,gy:0}));
+  for(const[cx,cz] of [[-4,16],[11,-16],[-3,-17],[12,17]])
+    B.ent(new Crate(cx,0,cz,{s:1.25,metal:true}));
+  B.ent(new Door(14,0,0,3.4,4.2,.24,['seqOpen','brk1'],{mode:'up',rot:Math.PI/2}));
+  B.ent(new Checkpoint(-4,0,0));
+
+  /* ---- D · PUMP ROOM ---------------------------------------------------- */
+  B.ent(new Water(23,0,18,44,.5,{surge:[-.6,1.3,10],electric:'!brk2'}));
+  const stones=[[17,0,.9],[20,-5,1.2],[23,4,.7],[26,-3,1.3],[29,3,1.0]];
+  for(const[x,z,y] of stones) B.plat(x,y,z,2.8,2.8,CONC,.8);
+  B.plat(17,2.8,-13,4,4,MT); B.plat(20,4.0,-16,3.5,3.5,MT);
+  B.ent(new Lever(20,4.7,-17.6,'brk2',{kind:'breaker',label:'CUT THE PUMP FEED'}));
+  B.plat(29,2.6,14,4,4,MT);
+  B.ent(new Pickup(29,3.2,14,{key:'card_green',label:'GREEN KEYCARD',kind:'card',
+    color:CARD_COL.green}));
+  B.ent(new Lamp(23,7,0,{i:1.3,dist:16,color:0x6bb8ff}));
+  B.ent(new NPC(17,2.8,-13,{name:'TIDE II',female:true,skin:0,hair:4,rot:1.5,ch:'metTide2',
+    lines:['Do not put a foot in that water while the feed is live.',
+      'Cut it from the platform above me, then the surge is only cold.',
+      'Green card is on the far side. I will wait here — somebody has to tell them what happened.']}));
+  B.ent(new Door(32,0,0,3.4,4.2,.24,'brk2',{mode:'up',rot:Math.PI/2}));
+  B.ent(new Checkpoint(16,0,0,'cpD'));
+
+  /* ---- E · THE GATE ----------------------------------------------------- */
+  B.ent(new Reader(34.5,1.5,-4,'blue','rdBlue',{rot:-Math.PI/2}));
+  B.ent(new Reader(34.5,1.5,4,'green','rdGreen',{rot:-Math.PI/2}));
+  B.solid(40,1.7,-14,7,3.4,6,CONC);
+  B.ent(new Ladder(36.2,0,-14,3.8,{rot:Math.PI/2}));
+  B.ent(new Lever(40,4.2,-11.4,'brk3',{kind:'breaker',rot:Math.PI,
+    label:'CLOSE THE GATE BREAKER'}));
+  B.ent(new Plate(40,0,12,'weight',{w:2.0,crate:true,latch:true}));
+  B.ent(new Crate(35,0,12,{s:1.3,metal:true}));
+  B.ent(new Guard([[36,18],[46,18],[46,6],[36,6]],{speed:2.3,pause:.9,range:13,fov:.52,
+    female:true,skin:2,hair:1}));
+  B.ent(new Spot(41,0,{y:9,r:8,rad:2.8,speed:-.5,phase:3,gy:0}));
+  B.ent(new NPC(34,0,17,{name:'ROOK III',skin:4,hair:5,rot:-2.4,ch:'metRook3',
+    lines:['I told you in D-14 that nobody gets over that wall alone. You proved it the long way.',
+      'Everything is live. Cards, breakers, counterweight. The gate reads all of it together or none of it.',
+      'Go on. I have watched this door for forty years and I would like to see it open once.']}));
+  B.ent(new Checkpoint(35,0,0));
+  B.ent(new Exit(47.4,0,0,
+    ['wA','f0','f1','f2','seqOpen','brk1','brk2','brk3','rdBlue','rdGreen','weight'],
+    {rot:Math.PI/2}));
+
+  B.task('Load the receiving pad','wA');
+  B.task('Release all three cages',['f0','f1','f2']);
+  B.task('Take the blue keycard','got_card_blue');
+  B.task('Enter the hall interlock','seqOpen');
+  B.task('Throw the hall breaker','brk1');
+  B.task('Cut the pump feed','brk2');
+  B.task('Take the green keycard','got_card_green');
+  B.task('Close the gate breaker','brk3');
+  B.task('Load the gate counterweight','weight');
+  B.task('Swipe blue at the gate','rdBlue');
+  B.task('Swipe green at the gate','rdGreen');
+}};
+
+/* ten hand-built levels, nine generated wings of ten, then the finale */
+const LEVELS=HANDMADE.concat(genDescriptors()).concat([FINALE]);
+const moduleOf=i=>i>=100?9:(i<10?0:Math.floor(i/10));
 /* ============================================================================
    RENDERER / SCENE
    ========================================================================== */
@@ -3553,7 +3778,8 @@ function taskDone(t){
 }
 function updateHUD(){
   const L=LEVELS[G.level];
-  $('hLv').textContent='WING '+(moduleOf(G.level)+1)+' · LEVEL '+(G.level+1)+' / '+LEVELS.length;
+  $('hLv').textContent=(G.level>=100?'FINALE':'WING '+(moduleOf(G.level)+1))+
+    ' · LEVEL '+(G.level+1)+' / '+LEVELS.length;
   $('hNm').textContent=L.name;
   $('hTasks').innerHTML=G.tasks.map(t=>
     '<div class="tk'+(taskDone(t)?' done':'')+'">'+t.text+'</div>').join('');
@@ -3823,6 +4049,19 @@ function buildLevelGrid(){
         '</div>';
     }
     html+='</div>';
+  }
+  // the finale sits on its own, after every wing
+  if(LEVELS.length>100){
+    const i=100, un=i<PROG.unlocked, dn=PROG.done.includes(i), bt=PROG.best['l'+i];
+    html+='<div class="modhead'+(un?'':' lockedmod')+'">'+
+      '<span class="mn">FINALE</span><span class="mt">'+
+      (un?LEVELS[i].name:'SEALED')+'</span><span class="ms">'+
+      (un?'One night, every lock':'Clear all ten wings')+'</span></div>'+
+      '<div class="lvgrid"><div class="lvcard'+(un?'':' locked')+'" data-i="100">'+
+      '<div class="n">101</div><div class="t">'+(un?LEVELS[i].name:'LOCKED')+'</div>'+
+      '<div class="s">'+(un?'Eleven locks, one gate':'—')+'</div>'+
+      (dn?'<div class="done">\u2713'+(bt?' '+fmt(bt):'')+'</div>':'')+
+      '</div></div>';
   }
   $('lvGrid').innerHTML=html;
   $('lvGrid').onclick=e=>{

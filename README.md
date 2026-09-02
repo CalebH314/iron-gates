@@ -32,6 +32,20 @@ makes the room make sense.
 | `R` | Respawn at the last checkpoint |
 | `Esc` | Pause |
 
+## Structure
+
+101 levels: ten hand-built, ninety generated across nine themed wings, then a
+finale. Generated levels vary by **shape** (`doors` sequential, `open` roam the
+hall in any order, `reverse` start at the far end and work back), by chamber
+count, and — past the halfway mark — by carrying two problems per chamber
+instead of one. Difficulty is a global ramp across all ninety rather than
+resetting each wing, so guards, doorway beams and searchlights appear as you get
+deeper. All 101 verified structurally distinct.
+
+**Level 101 — The Long Night** is the finale: five zones, eleven separate locks
+on one gate (a weight pad, three cage releases, two keycards, a four-step
+interlock, three breakers and a counterweight), two guards and two searchlights.
+
 ## Unlock code
 
 Typing **951413** on any menu screen, or entering it in Settings, opens all
