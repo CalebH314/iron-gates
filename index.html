@@ -2100,7 +2100,7 @@ class Lamp extends Ent{
     const stem=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.34,6),MAT.dark);
     stem.position.y=.19; g.add(stem);
     this.base=(o.i??2.0)*LIT.lamp;
-    this.pl=new THREE.PointLight(col,this.base,(o.dist??11)*1.2,1.5);
+    this.pl=new THREE.PointLight(col,this.base,(o.dist??11)*LIT.lampDist,1.4);
     g.add(this.pl);
     G.scene.add(g); this.g=g; this.req=o.req; this.flick=!!o.flicker;
   }
@@ -2937,7 +2937,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.22;
+renderer.toneMappingExposure=1.48;
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
@@ -2974,14 +2974,15 @@ addEventListener('resize',resize);
 let hemi=null,sun=null,skyMesh=null,stars=null,fill=null;
 /* The dark levels were unreadable, so every light source gets a lift and a
    floor value — the mood survives, but you can actually see the platforms. */
-const LIT={hemi:1.9, hemiMin:.22, sun:1.4, lamp:1.35, fill:.17};
+const LIT={hemi:2.7, hemiMin:.36, sun:1.85, lamp:1.75, lampDist:1.45,
+           fill:.30, fogNear:14, fogFar:1.35};
 function setupSky(amb){
   if(hemi) scene.remove(hemi);
   if(sun) scene.remove(sun);
   if(fill) scene.remove(fill);
   if(skyMesh){ scene.remove(skyMesh); skyMesh.geometry.dispose(); skyMesh.material.dispose(); }
   if(stars){ scene.remove(stars); stars.geometry.dispose(); stars.material.dispose(); stars=null; }
-  scene.fog=new THREE.Fog(amb.fog,4,amb.far||60);
+  scene.fog=new THREE.Fog(amb.fog,LIT.fogNear,(amb.far||60)*LIT.fogFar);
   scene.background=new THREE.Color(amb.fog);
   hemi=new THREE.HemisphereLight(0x9fb6d4,0x2a2620,
     Math.max(LIT.hemiMin,(amb.hemi??.18)*LIT.hemi));
