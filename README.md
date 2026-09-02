@@ -23,6 +23,7 @@ makes the room make sense.
 |---|---|
 | `W` `A` `S` `D` | Move |
 | Mouse | Look (click the page to capture the cursor) |
+| Settings | First person by default; third person is available if you prefer it |
 | `Space` | Jump |
 | `Shift` | Sprint |
 | `Ctrl` / `C` | Crouch — the only way through vents |
@@ -50,9 +51,14 @@ makes the room make sense.
   gracefully if the addons fail to load
 - Custom swept-AABB physics: move-and-slide, coyote time, jump buffering,
   moving-platform carry, pushable crates, crouch with headroom checks
-- Characters are built from capsules on a hand-made rig and animated
-  procedurally — walk, run, jump, climb and crouch are all driven by sine
-  phase rather than keyframes
+- First-person by default: the camera sits inside the (hidden) head, the body
+  turns with the view, and a small head bob and roll are driven by the walk cycle
+- Characters are lofted through stacks of elliptical rings on a hand-made rig, so
+  limbs taper and bulge the way real ones do; heads are a unit sphere pushed into
+  a skull — tapered jaw, forward chin, brow ridge, flatter temples — and the hair
+  reuses the same displacement so it sits on the skull rather than around it
+- Animation is procedural: walk, run, jump, climb and crouch are all driven by
+  sine phase rather than keyframes
 - Puzzle logic is a channel system: devices set named channels, doors listen to
   boolean expressions over them (`['gatePower','gateCard','gateWeight']`)
 - Guard vision is a cone test plus a slab raycast for line of sight; crouching
